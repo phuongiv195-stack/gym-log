@@ -852,6 +852,25 @@ function techSlots(t){
   if(!t) return 0;
   return /two drop/i.test(t)?2:1;
 }
+/* keep the ★ rows in sync with the last working set's weight (per technique rule).
+   Only rows the user hasn't hand-edited (flagged .a, or still empty) get updated. */
+function refreshXsets(entry, e){
+  if(!(entry.xsets||[]).length) return false;
+  let base=parseFloat(entry.sets[entry.sets.length-1].kg);
+  if(isNaN(base)) base=topKg(entry.sets);
+  if(base==null||isNaN(base)) return false;
+  const t=e.tech||'';
+  let changed=false;
+  const put=(s,val)=>{ if(s.a||str(s.kg)===''){ const v=String(val); if(s.kg!==v){ s.kg=v; changed=true; } s.a=1; } };
+  if(/drop/i.test(t)&&!/mechanical/i.test(t)){          // drop sets: −25% chain from the last set
+    let k=base;
+    entry.xsets.forEach(s=>{ k=round25(k*0.75); put(s,k); });
+  } else {                                              // partials / myo-reps / mechanical / holds: SAME weight
+    entry.xsets.forEach(s=>put(s,base));
+  }
+  if(/static/i.test(t)) entry.xsets.forEach(s=>{ if((s.a||str(s.reps)==='')&&s.reps!=='30'){ s.reps='30'; changed=true; } }); // 30-second hold
+  return changed;
+}
 /* Pre-fill an untouched entry with the plan (shown pale in the UI).
    _auto entries are NOT saved until the user touches the exercise or marks it done. */
 function prefillEntry(entry, e, date, w){
@@ -866,16 +885,7 @@ function prefillEntry(entry, e, date, w){
   const n=entry.wsets.length;
   entry.wsets.forEach((s,si)=>{ const p=(WU_PYRAMID[n]||[])[si];
     if(p){ s.kg=String(round25(plan.kg*p[0]/100)); s.reps=bottomReps(p[1]); } });
-  if((entry.xsets||[]).length){ // pre-fill the ★ rows per technique
-    const t=e.tech||'';
-    if(/drop/i.test(t)&&!/mechanical/i.test(t)){        // drop sets: −25% chain
-      let k=plan.kg;
-      entry.xsets.forEach(s=>{ k=round25(k*0.75); s.kg=String(k); });
-    } else {                                            // partials / myo-reps / mechanical / holds: SAME weight as the last set
-      entry.xsets.forEach(s=>{ s.kg=String(plan.kg); });
-    }
-    if(/static/i.test(t)) entry.xsets.forEach(s=>{ s.reps='30'; }); // 30-second hold
-  }
+  refreshXsets(entry, e);                                // pre-fill the ★ rows per technique
   entry._auto=true;
 }
 /* on ✓ done: drop suggested rows the user never touched — keep only what was really lifted.
@@ -1277,7 +1287,16 @@ function renderList(){
         inp.addEventListener('input',()=>{
           touch();
           const s0=arrOf()[si];
-          s0[inp.dataset.f]=inp.value; delete s0.a; commit();
+          s0[inp.dataset.f]=inp.value; delete s0.a;
+          // typing a working-set kg mirrors into untouched ★ rows (same weight / −25% chain)
+          if(!isWu&&!isX&&inp.dataset.f==='kg'&&refreshXsets(entry,e)){
+            card.querySelectorAll('.srow[data-x]').forEach(r=>{
+              const xi=+r.dataset.si;
+              const kIn=r.querySelector('input[data-f="kg"]');
+              if(kIn) kIn.value=entry.xsets[xi].kg;
+            });
+          }
+          commit();
           renderDays();
         });
       });
