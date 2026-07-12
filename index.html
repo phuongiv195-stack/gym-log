@@ -194,6 +194,9 @@ main{background:var(--paper); color:var(--ink); border-radius:20px 20px 0 0; pad
 .slab.xs{color:var(--gold-dk)}
 .srow[data-wu] input{background:#fff; border-style:dashed}
 .srow.xrow input{background:rgba(216,165,49,.06); border-color:rgba(216,165,49,.5); border-style:dashed}
+/* the last working set + its ★ rows are one continuous no-rest block — same gold look */
+.srow.goldblock input{background:rgba(216,165,49,.06); border-color:rgba(216,165,49,.5)}
+.srow.goldblock .slab{color:var(--gold-dk)}
 input.auto{color:var(--mut2)} /* suggested (untouched) numbers look pale until confirmed */
 /* max (1RM) line */
 .maxline{margin-top:5px; font-size:11.5px; color:var(--mut); display:flex; align-items:center; gap:4px; flex-wrap:wrap}
@@ -1223,12 +1226,12 @@ function renderList(){
       const techHere=e.tech&&(isLast||/on all sets/i.test(e.tech));
       setsHtml+=`<div class="shint">${setHint(e,si,entry.sets.length,plan)}</div>
       ${techHere?`<div class="shint techline">★ ${esc(e.tech)} — ${esc(techExplain(e.tech)||'')}</div>`:''}
-      <div class="srow ${s.ck?'ckd':''}" data-si="${si}">
+      <div class="srow ${s.ck?'ckd':''}${techHere?' goldblock':''}" data-si="${si}">
         <div class="slab">S${si+1}</div>
         <div class="fld"><input class="${entry._auto?'auto':''}" inputmode="decimal" placeholder="0" data-f="kg" value="${esc(s.kg)}"><span class="u">kg</span></div>
         <div class="fld"><input class="${entry._auto?'auto':''}" inputmode="numeric" placeholder="0" data-f="reps" value="${esc(s.reps)}"><span class="u">reps</span></div>
         <button class="sck ${s.ck?'on':''}" title="Set done">✓</button>
-        <button class="rm">×</button>
+        <span></span>
       </div>`;
       // ★ extension rows to track what the technique produced (drops / partial reps / hold seconds)
       if(isLast&&(entry.xsets||[]).length){
@@ -1309,10 +1312,6 @@ function renderList(){
         // all working sets checked -> exercise done (collapses)
         if(!isWu && !isX && entry.sets.length && entry.sets.every(s=>s.ck)) { entry.done=true; openSet.delete(ei); finishExercise(entry); }
         commit(); renderList(); renderDays();
-      };
-      const rm=row.querySelector('.rm');
-      if(rm) rm.onclick=()=>{
-        if(entry.sets.length>1){ touch(); entry.sets.splice(si,1); commit(); renderList(); renderDays(); }
       };
     });
     card.querySelector('.addset').onclick=()=>{ touch(); entry.sets.push({kg:'',reps:''}); commit(); renderList(); };
