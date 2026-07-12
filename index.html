@@ -208,6 +208,7 @@ input.auto{color:var(--mut2)} /* suggested (untouched) numbers look pale until c
 .maxline.hist b{font-family:var(--mono); color:var(--olive-dk)}
 .shint{margin:9px 0 -4px 30px; font-size:11px; color:var(--mut); line-height:1.35}
 .shint b{color:var(--gold-dk)}
+.shint.techline{margin-top:3px; color:#8a6414; font-weight:600}
 .tech{margin:6px 14px 0; padding:7px 11px; background:rgba(216,165,49,.13); border:1px solid rgba(216,165,49,.5);
   border-radius:10px; font-size:12px; color:#6b5410; font-weight:600; line-height:1.45}
 .tech .techx{font-weight:400; color:#7a6220}
@@ -1177,7 +1178,10 @@ function renderList(){
       setsHtml+=`<div class="scap">No warm-up needed — straight to working sets${wsRangeNote(e)} · ${esc(e.rest||'—')} between sets</div>`;
     }
     entry.sets.forEach((s,si)=>{
-      setsHtml+=`<div class="shint">${setHint(e,si,entry.sets.length,plan)}</div>
+      // the ★ technique fires on the LAST working set ("on all sets" variants: every set)
+      const techHere=e.tech&&(si===entry.sets.length-1||/on all sets/i.test(e.tech));
+      const techLine=techHere?`<div class="shint techline">★ then, no rest: ${esc(techExplain(e.tech)||e.tech)}</div>`:'';
+      setsHtml+=`<div class="shint">${setHint(e,si,entry.sets.length,plan)}</div>${techLine}
       <div class="srow ${s.ck?'ckd':''}" data-si="${si}">
         <div class="slab">S${si+1}</div>
         <div class="fld"><input class="${entry._auto?'auto':''}" inputmode="decimal" placeholder="0" data-f="kg" value="${esc(s.kg)}"><span class="u">kg</span></div>
