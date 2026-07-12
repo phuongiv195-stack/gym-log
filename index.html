@@ -1293,7 +1293,7 @@ function renderList(){
           <h3 class="exlink" title="View history">${esc(e.name)} <span class="hico">📈</span></h3>
           <div class="tgt">${esc(e.reps)} reps · ${effChip(e)} · ${esc(e.rest||'—')} between sets</div>
           ${lastLine}
-          <div class="maxline">Today <input class="maxin todayin" inputmode="decimal" placeholder="?" value="${plan&&plan.kg?plan.kg:''}"><span class="mu">kg</span> × <b>${plan&&plan.reps[0]!=null?plan.reps[0]:(bottomReps(e.reps)||'—')}</b> reps${plan&&plan.mode==='up'?` <span class="estl up">↑ +2.5kg</span>`:''}${plan&&plan.mode==='repeat'?` <span class="estl">deload — repeat</span>`:''}</div>
+          <div class="maxline">Today <input class="maxin todayin" inputmode="decimal" placeholder="?" value="${(topKg(entry.sets)!=null?topKg(entry.sets):(plan&&plan.kg?plan.kg:''))}"><span class="mu">kg</span> × <b>${plan&&plan.reps[0]!=null?plan.reps[0]:(bottomReps(e.reps)||'—')}</b> reps${plan&&plan.mode==='up'?` <span class="estl up">↑ +2.5kg</span>`:''}${plan&&plan.mode==='repeat'?` <span class="estl">deload — repeat</span>`:''}</div>
         </div>
         <button class="exdonebtn ${entry.done?'on':''}" title="Mark exercise done">✓</button>
       </div>
