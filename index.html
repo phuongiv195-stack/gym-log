@@ -1471,7 +1471,7 @@ function renderList(){
         <div class="nm">
           <h3 class="exlink" title="View history">${esc(e.name)}</h3>
           ${lastLine}
-          ${prev?'':`<div class="maxline" title="Guess: the heaviest weight you could lift about 10 times. Asked only until your first logged session.">Max <input class="maxin" inputmode="decimal" placeholder="?" value="${workVal!=null?workVal:''}"><span class="mu">kg</span> / 10 reps</div>`}
+          ${prev?'':`<div class="maxline" title="The heaviest weight you have lifted on this exercise. Asked only until your first logged session.">Max <input class="maxin" inputmode="decimal" placeholder="?" value="${workVal!=null?workVal:''}"><span class="mu">kg</span></div>`}
           <div class="maxline">Today <input class="maxin todayin" inputmode="decimal" placeholder="?" value="${(topKg(entry.sets)!=null?topKg(entry.sets):(plan&&plan.kg?plan.kg:''))}"><span class="mu">kg</span> × <b>${plan&&plan.reps[0]!=null?plan.reps[0]:(bottomReps(e.reps)||'—')}</b> reps${plan&&plan.mode==='up'?` <span class="estl up">↑ +${getStep()}kg</span>`:''}${plan&&plan.mode==='repeat'?` <span class="estl">deload — repeat</span>`:''}</div>
         </div>
         <button class="exdonebtn ${entry.done?'on':''}" title="Mark exercise done">✓</button>
@@ -1858,9 +1858,9 @@ function renderLearn(){
       <h4>How to choose your weight</h4>
       These programs prescribe <b>effort</b> (RPE or RIR), not kg. Pick a load that lands you at the target for the given rep range.
       Too easy → add weight next set/session. Hit the top of the rep range at the target effort → add a little weight (~2.5%).
-      <h4>The "Max … kg / 10 reps" box (first time on an exercise only)</h4>
-      One simple question, the same for every exercise: <b>what's the heaviest weight you could lift about 10 times?</b>
-      Guess it — don't test it. From that the app computes today's load for the week's rep range and RIR target, plus warm-up percentages.
+      <h4>The "Max ? kg" box (first time on an exercise only)</h4>
+      One simple question: <b>what's the heaviest weight you've lifted on this exercise?</b> (Roughly the weight you can manage ~10 times.)
+      A rough guess is fine. From that the app computes today's load for the week's rep range and RIR target, plus warm-up percentages.
       <br><br>
       Example — Max 15 kg / 10 reps, exercise is 8–10 reps:
       <table class="cheat">
