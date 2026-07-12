@@ -1292,7 +1292,7 @@ function renderHome(){
       <div class="setlbl"><b style="color:var(--bad)">Clear all data</b><span>Wipes both profiles, local + cloud. For removing test data.</span></div>
       <div class="setbtns"><button id="clrBtn" class="mini danger">🗑 Clear</button></div>
     </div>
-    <div class="buildtag">build 0712.2213</div>
+    <div class="buildtag">build 0712.2221</div>
   </div></main>`;
   app.innerHTML=html;
   app.querySelectorAll('.progcard').forEach(c=>{
@@ -1428,9 +1428,9 @@ function renderList(){
           <span></span>
         </div>`;
       });
-      setsHtml+=`<div class="scap"><b>Working sets</b>${wsRangeNote(e)} · ${esc(e.rest||'—')} between sets</div>`;
+      setsHtml+=`<div class="scap"><b>Working sets</b>${e.reps&&e.reps!=='—'?` · ${esc(e.reps)} reps range`:''}${wsRangeNote(e)} · ${esc(e.rest||'—')} between sets</div>`;
     } else {
-      setsHtml+=`<div class="scap">No warm-up needed — straight to working sets${wsRangeNote(e)} · ${esc(e.rest||'—')} between sets</div>`;
+      setsHtml+=`<div class="scap">No warm-up needed — straight to working sets${e.reps&&e.reps!=='—'?` · ${esc(e.reps)} reps range`:''}${wsRangeNote(e)} · ${esc(e.rest||'—')} between sets</div>`;
     }
     const isHold=/static/i.test(e.tech||'');
     entry.sets.forEach((s,si)=>{
