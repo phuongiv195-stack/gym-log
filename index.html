@@ -1294,7 +1294,7 @@ function renderHome(){
       <div class="setlbl"><b style="color:var(--bad)">Clear all data</b><span>Wipes both profiles, local + cloud. For removing test data.</span></div>
       <div class="setbtns"><button id="clrBtn" class="mini danger">🗑 Clear</button></div>
     </div>
-    <div class="buildtag">build 0712.2227</div>
+    <div class="buildtag">build 0712.2232</div>
   </div></main>`;
   app.innerHTML=html;
   app.querySelectorAll('.progcard').forEach(c=>{
@@ -1573,7 +1573,11 @@ function renderList(){
     card.querySelector('.exdonebtn').onclick=()=>{
       entry._auto=false; // ✓ confirms the pre-filled numbers as done
       entry.done=!entry.done; openSet.delete(ei);
-      if(entry.done) finishExercise(entry); // drop untouched suggested rows
+      if(entry.done){
+        const ckAll=arr=>(arr||[]).forEach(s=>{ if(str(s.kg)!==''||str(s.reps)!=='') s.ck=1; });
+        ckAll(entry.sets); ckAll(entry.wsets); ckAll(entry.xsets); // ✓ every filled set of this exercise
+        finishExercise(entry);
+      }
       commit(); renderList(); renderDays();
     };
     list.appendChild(card);
