@@ -276,6 +276,32 @@ input.auto{color:var(--mut2)} /* suggested (untouched) numbers look pale until c
   font-size:12px; letter-spacing:.5px; text-transform:uppercase; padding:9px 12px; border-radius:9px; cursor:pointer; flex:0 0 auto}
 .remind .x{background:transparent; color:#8a7a4a; font-size:18px; padding:0 4px}
 
+/* ---- Calendar ---- */
+.calhead{display:flex; align-items:center; gap:10px; padding:2px 2px 10px}
+.calttl{flex:1; text-align:center}
+.calttl .w{font-family:var(--disp); font-size:20px; font-weight:600; color:var(--ink); letter-spacing:1px; line-height:1.1}
+.calgrid{display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin:0 2px}
+.caldow{margin-bottom:4px}
+.caldow div{text-align:center; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--mut2); font-weight:700; padding:2px 0}
+.cc{background:var(--paper2); border:1px solid var(--line); border-radius:9px; min-height:56px; padding:4px 5px; position:relative}
+.cc.dim{opacity:.35}
+.cc .cd{font-family:var(--mono); font-size:11px; font-weight:700; color:var(--mut)}
+.cc.train{background:#fff; border-color:var(--olive-lt); cursor:pointer}
+.cc.train .cd{color:var(--ink)}
+.cc .cw{font-family:var(--disp); font-size:10.5px; font-weight:600; color:var(--olive-dk); line-height:1.15; margin-top:2px;
+  overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical}
+.cc .ck2{position:absolute; top:3px; right:5px; font-size:10px; font-weight:700; color:var(--mut2)}
+.cc.done{background:rgba(79,138,77,.13); border-color:rgba(79,138,77,.55)}
+.cc.done .ck2{color:var(--good); font-size:12px}
+.cc.logged .ck2{color:var(--gold-dk); font-size:14px; line-height:.7}
+.cc.today{box-shadow:0 0 0 2px var(--gold)}
+.callegend{display:flex; gap:14px; justify-content:center; margin-top:12px; font-size:11px; color:var(--mut)}
+.callegend .lg{display:inline-block; width:11px; height:11px; border-radius:3px; background:var(--paper2); border:1px solid var(--line); vertical-align:-1px; margin-right:4px}
+.callegend .lg.train{background:#fff; border-color:var(--olive-lt)}
+.wdpick{display:flex; gap:6px; flex-wrap:wrap}
+.wdpick button{border:1px solid var(--line); background:var(--paper); color:var(--mut); border-radius:10px;
+  padding:9px 12px; font-size:12.5px; font-weight:700; cursor:pointer}
+.wdpick button.on{background:var(--olive); border-color:var(--olive); color:#fff}
 /* ---- Measure ---- */
 .unittog{display:flex; gap:0; flex:0 0 auto; align-self:flex-end; border:1px solid var(--line); border-radius:10px; overflow:hidden}
 .unittog button{border:none; background:#fff; color:var(--mut); padding:11px 10px; font-size:11px; font-weight:700; cursor:pointer}
@@ -364,6 +390,7 @@ input.auto{color:var(--mut2)} /* suggested (untouched) numbers look pale until c
     <div class="tabs">
       <button data-v="home">Programs</button>
       <button data-v="log">Log</button>
+      <button data-v="cal">Calendar</button>
       <button data-v="history">History</button>
       <button data-v="measure">Measure</button>
       <button data-v="learn">Learn</button>
@@ -775,6 +802,27 @@ function dayMeta(pid, week, dayId){
     block:null, restAfter:day.restAfter};
 }
 
+/* ================= SCHEDULE (training calendar) =================
+   Per profile+program: a start date + which weekdays you train.
+   The whole program is laid out sequentially onto those weekdays. */
+const DEF_WDAYS={4:[1,2,4,5],5:[1,2,3,4,5],6:[1,2,3,4,5,6],8:[1,2,3,4,5,6]};
+function getSched(){ const r=store.get(K(pid,'sched')); if(r){try{return JSON.parse(r)}catch(e){}} return null; }
+function setSched(sc){ if(sc) store.set(K(pid,'sched'),JSON.stringify(sc)); else store.remove(K(pid,'sched')); }
+function schedList(){
+  const sc=getSched(); if(!sc||!(sc.days||[]).length) return null;
+  const P=PROGRAMS[pid];
+  const seq=[];
+  for(let w=1;w<=P.weeks;w++) dayList(pid,w).forEach(d=>seq.push({week:w,dayId:d.id,name:d.name}));
+  const map={};
+  let d=parseDate(sc.start), i=0, guard=0;
+  while(i<seq.length&&guard<3000){
+    if(sc.days.includes(d.getDay())){ map[iso(d)]=Object.assign({idx:i},seq[i]); i++; }
+    d.setDate(d.getDate()+1); guard++;
+  }
+  return {map, start:sc.start, end:iso(new Date(d.getTime()-86400000)), total:seq.length};
+}
+function schedFor(date){ const s=schedList(); return s?(s.map[date]||null):null; }
+
 /* ================= PROFILES ================= */
 function getProfiles(){
   const r=store.get('g2:profiles');
@@ -950,7 +998,7 @@ function loadSessionFor(date){
   const sv=getSaved(date);
   if(sv){ week=sv.week; dayId=sv.dayId; S=buildSession(date,sv.week,sv.dayId,sv.entries,sv.done,sv.gw); }
   else {
-    const nx=nextSlot(date);                             // auto-advance to the next workout
+    const nx=schedFor(date)||nextSlot(date);             // calendar schedule first, else auto-advance
     if(nx){ week=nx.week; dayId=nx.dayId; store.set(K(pid,'pos','w'),week); store.set(K(pid,'pos','d'),dayId); }
     S=buildSession(date,week,dayId,null,false,0);
   }
@@ -1459,6 +1507,95 @@ function lineChart(points,unit){
     ${dots}${xlabels}</svg>`;
 }
 
+/* ================= RENDER: CALENDAR ================= */
+let calMonth=null; // Date anchored at the 1st of the displayed month
+function renderCalendar(){
+  if(!pid){ switchView('home'); return; }
+  const app=$('#app');
+  const sc=getSched();
+  if(!sc){ renderCalSetup(app); return; }
+  const sl=schedList();
+  if(!calMonth){ const t=new Date(); calMonth=new Date(t.getFullYear(),t.getMonth(),1); }
+  const y=calMonth.getFullYear(), m=calMonth.getMonth();
+  const first=new Date(y,m,1);
+  const offset=(first.getDay()+6)%7;          // week starts Monday
+  const today=todayStr();
+  let cells='';
+  for(let i=0;i<42;i++){
+    const d=new Date(y,m,1-offset+i);
+    const ds=iso(d);
+    const inMonth=d.getMonth()===m;
+    const w=sl.map[ds];
+    const sv=store.get(SKEY(ds));
+    let st='';
+    if(sv){ try{ const j=JSON.parse(sv); st=j.done?'done':'logged'; }catch(e){} }
+    cells+=`<div class="cc ${inMonth?'':'dim'} ${ds===today?'today':''} ${w?'train':''} ${st}" data-d="${ds}">
+      <div class="cd">${d.getDate()}</div>
+      ${w?`<div class="cw">${esc(w.name)}</div><div class="ck2">${st==='done'?'✓':(st==='logged'?'•':'W'+w.week)}</div>`:''}
+    </div>`;
+  }
+  app.innerHTML=`<main>
+    <div class="calhead">
+      <button class="wk-btn" id="cPrev">‹</button>
+      <div class="calttl"><div class="w">${MON[m]} ${y}</div>
+        <span class="badge">${esc(PROGRAMS[pid].short)} · ${fmtShort(sl.start)} → ${fmtShort(sl.end)}</span></div>
+      <button class="wk-btn" id="cNext">›</button>
+    </div>
+    <div class="calgrid caldow">${['Mo','Tu','We','Th','Fr','Sa','Su'].map(d=>`<div>${d}</div>`).join('')}</div>
+    <div class="calgrid" id="calBody">${cells}</div>
+    <div class="callegend">
+      <span><i class="lg train"></i> training day</span><span><i class="lg"></i> rest</span>
+      <span>✓ done</span><span>• logged</span>
+    </div>
+    <div class="backup" style="margin-top:14px">
+      <button id="cEdit">⚙ Edit schedule</button>
+    </div>
+  </main>`;
+  $('#cPrev').onclick=()=>{ calMonth=new Date(y,m-1,1); renderCalendar(); };
+  $('#cNext').onclick=()=>{ calMonth=new Date(y,m+1,1); renderCalendar(); };
+  $('#cEdit').onclick=()=>renderCalSetup(app,sc);
+  app.querySelectorAll('.cc.train').forEach(c=>{
+    c.onclick=()=>{ loadSessionFor(c.dataset.d); switchView('log'); };
+  });
+}
+function renderCalSetup(app, cur){
+  const P=PROGRAMS[pid];
+  const def=(cur&&cur.days)||DEF_WDAYS[P.daysPerWeek]||[1,2,3,4,5];
+  const WD=[['1','Mon'],['2','Tue'],['3','Wed'],['4','Thu'],['5','Fri'],['6','Sat'],['0','Sun']];
+  app.innerHTML=`<main>
+    <div class="hero"><h2>Training calendar</h2>
+      <p>${esc(P.name)} — pick your start date and gym days; the whole ${P.weeks}-week plan is laid out for you (${P.daysPerWeek} workouts per week${P.daysPerWeek>=7?'':' + rest days'}).</p></div>
+    <div class="mcard">
+      <div class="datefld"><label>Start date (your first workout)</label>
+        <input type="date" id="scStart" value="${(cur&&cur.start)||todayStr()}"></div>
+      <label style="display:block;margin:14px 0 6px;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--mut);font-weight:700">Gym days</label>
+      <div class="wdpick">${WD.map(([v,l])=>`<button data-wd="${v}" class="${def.includes(+v)?'on':''}">${l}</button>`).join('')}</div>
+      <div class="mhint" id="scHint"></div>
+      <div class="backup" style="margin-top:14px">
+        <button id="scGo">✓ Create schedule</button>
+        ${cur?'<button id="scDel" style="background:transparent;color:var(--bad);border-color:var(--bad)">Remove</button>':''}
+      </div>
+    </div>
+  </main>`;
+  const sel=()=>[...app.querySelectorAll('.wdpick button.on')].map(b=>+b.dataset.wd);
+  const hint=()=>{ const n=sel().length;
+    $('#scHint').innerHTML=n<P.daysPerWeek
+      ?`⚠ You picked ${n} day${n===1?'':'s'}/week for a ${P.daysPerWeek}×/week program — the plan will stretch longer than ${P.weeks} weeks (that's fine).`
+      :`${n} gym day${n===1?'':'s'} per week — sessions fill those days in program order; everything else is rest.`; };
+  app.querySelectorAll('.wdpick button').forEach(b=>{ b.onclick=()=>{ b.classList.toggle('on'); hint(); }; });
+  hint();
+  $('#scGo').onclick=()=>{
+    const days=sel();
+    if(!days.length){ alert('Pick at least one gym day.'); return; }
+    const start=$('#scStart').value||todayStr();
+    setSched({start, days});
+    calMonth=null;
+    renderCalendar();
+  };
+  const del=$('#scDel');
+  if(del) del.onclick=()=>{ if(confirm('Remove this schedule?')){ setSched(null); renderCalendar(); } };
+}
+
 /* ================= RENDER: MEASURE (body weight & measurements) =================
    Per profile, shared across all programs. Stored metric (kg/cm); shown in kg·cm or lbs·in. */
 const BODY_FIELDS=[['neck','Neck'],['shoulders','Shoulders'],['chest','Chest'],['waist','Waist'],['hips','Hips'],
@@ -1739,6 +1876,7 @@ function switchView(v){
   document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
   if(v==='home') renderHome();
   else if(v==='log') renderLog();
+  else if(v==='cal') renderCalendar();
   else if(v==='history') renderHistory();
   else if(v==='measure') renderMeasure();
   else renderLearn();
@@ -1746,7 +1884,7 @@ function switchView(v){
 }
 document.querySelectorAll('.tabs button').forEach(b=>{
   b.onclick=()=>{
-    if((b.dataset.v==='log'||b.dataset.v==='history')&&!pid){ switchView('home'); return; }
+    if((b.dataset.v==='log'||b.dataset.v==='history'||b.dataset.v==='cal')&&!pid){ switchView('home'); return; }
     if(b.dataset.v==='log'&&!S) loadSessionFor(todayStr());
     switchView(b.dataset.v);
   };
