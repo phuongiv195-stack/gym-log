@@ -1460,9 +1460,18 @@ function renderList(){
     const mxa=card.querySelector('.maxin:not(.todayin)');
     if(mxa) mxa.onchange=()=>{
       setWork(e.name, mxa.value);
-      const sv=getSaved(curDate);
-      S=buildSession(curDate,week,dayId,(sv&&sv.dayId===dayId)?sv.entries:null,S.done,S.gw);
-      renderList();
+      const nv=workTarget(e);                    // re-derive today's load from the new Max
+      if(nv){
+        entry.sets.forEach(s=>{ s.kg=String(nv); });
+        const n=entry.wsets.length;
+        entry.wsets.forEach((s,si)=>{ const p=(WU_PYRAMID[n]||[])[si];
+          if(p) s.kg=String(round25(nv*p[0]/100)); });
+        entry.xsets.forEach(s=>{ s.a=1; });
+        refreshXsets(entry, e);
+        const plan2=progressionPlan(e,curDate,week,entry.sets.length);
+        entry.sets.forEach((s,i)=>{ if(str(s.reps)===''&&plan2&&plan2.reps[i]!=null) s.reps=String(plan2.reps[i]); });
+      }
+      commit(); renderList(); renderDays();
     };
     // Today box: literally today's working weight — applies to this session only, never rescaled
     const mx=card.querySelector('.todayin');
