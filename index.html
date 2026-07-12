@@ -945,7 +945,7 @@ function dayMeta(pid, week, dayId){
   if(P.plan){
     const blk=planBlock(P,week);
     const day=blk.days.find(d=>d.id===dayId)||blk.days[0];
-    return {title:day.name, focus:P.short+' · '+blk.name, banner:(P.banners||{})[String(week)]||null,
+    return {title:day.name, focus:null, banner:(P.banners||{})[String(week)]||null,
       block:blk.name, restAfter:day.restAfter||null};
   }
   if(pid==='jn365'){
@@ -954,7 +954,7 @@ function dayMeta(pid, week, dayId){
     return {title:day.name, focus:day.focus, banner:null, block:blk, restAfter:null};
   }
   const day=P.days.find(d=>d.id===dayId);
-  return {title:day.name, focus:P.short+' · Week '+week, banner:(P.banners||{})[String(week)]||null,
+  return {title:day.name, focus:null, banner:(P.banners||{})[String(week)]||null,
     block:null, restAfter:day.restAfter};
 }
 
@@ -1325,7 +1325,7 @@ function renderLog(){
     <div class="days" id="days"></div>
     <div id="remindSlot"></div>
     <div class="sheet-h">
-      <div><h2>${esc(meta.title)}</h2><div class="foc">${esc(meta.focus||'')} · ${S.entries.length} exercises</div></div>
+      <div><h2>${esc(meta.title)}</h2><div class="foc">${[meta.focus,S.entries.length+' exercises'].filter(Boolean).map(esc).join(' · ')}</div></div>
       <button class="donebtn ${S.done?'on':''}" id="donebtn">${S.done?'✓ Done':'Mark done'}</button>
     </div>
     ${meta.restAfter?`<div class="restinfo">After this day: ${esc(meta.restAfter)} rest day${meta.restAfter==='1'?'':'s'}</div>`:''}
