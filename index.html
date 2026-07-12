@@ -198,8 +198,10 @@ input.auto{color:var(--mut2)} /* suggested (untouched) numbers look pale until c
 .maxline .mu{margin-left:-2px}
 .maxline .sg{color:#5a5c4e}
 .maxline .sg b{font-family:var(--mono); color:var(--gold-dk)}
-.maxline .estl{font-size:9.5px; letter-spacing:.8px; text-transform:uppercase; font-weight:700; color:var(--mut2);
-  border:1px solid var(--line); border-radius:8px; padding:1px 5px}
+.maxline .estl{font-size:9.5px; letter-spacing:.8px; text-transform:uppercase; font-weight:700; color:var(--good);
+  border:1px solid rgba(79,138,77,.45); border-radius:8px; padding:1px 5px}
+.maxline.hist{color:var(--mut)}
+.maxline.hist b{font-family:var(--mono); color:var(--olive-dk)}
 .shint{margin:9px 0 -4px 30px; font-size:11px; color:var(--mut); line-height:1.35}
 .shint b{color:var(--gold-dk)}
 .tech{margin:6px 14px 0; padding:7px 11px; background:rgba(216,165,49,.13); border:1px solid rgba(216,165,49,.5);
@@ -552,10 +554,42 @@ function getWork(ex){
   if(isNaN(v)) v=parseFloat(store.get(legacyMaxKey(ex))); // earlier builds stored it as "max"
   return isNaN(v)?null:v;
 }
+const workTsKey=ex=>['g2',activeP.id,'workt',ex].join(':');
+function getWorkTs(ex){ const v=parseFloat(store.get(workTsKey(ex))); return isNaN(v)?0:v; }
 function setWork(ex,v){
   const n=parseFloat(v);
   store.remove(legacyMaxKey(ex));
-  if(isNaN(n)||n<=0) store.remove(workKey(ex)); else store.set(workKey(ex),String(n));
+  if(isNaN(n)||n<=0){ store.remove(workKey(ex)); store.remove(workTsKey(ex)); }
+  else { store.set(workKey(ex),String(n)); store.set(workTsKey(ex),String(Date.now())); }
+}
+/* target RIR (last set) of an exercise on a given program week/day */
+function rirTargetOf(name,w,d){
+  try{
+    const ex=dayExercises(pid,w,d).find(x=>x.name===name);
+    if(!ex||!ex.eff||ex.eff.left==null) return null;
+    return String(ex.eff.last!=null?ex.eff.last:ex.eff.left);
+  }catch(e){ return null; }
+}
+/* A session done at target RIR 0 IS a max test: its top set defines the new Max. */
+function autoMaxInfo(name){
+  for(const s of listSessions()){ // newest first
+    const e=s.entries.find(x=>x.exName===name);
+    if(!e) continue;
+    const t=topSet(e.sets); if(!t) continue;
+    if(rirTargetOf(name,s.week,s.dayId)==='0'){
+      // when this session was last written (wall clock), so a later manual edit can override it
+      const wts=MT[SKEY(s.date)]||parseDate(s.date).getTime();
+      return {kg:t.kg, ts:wts, date:s.date};
+    }
+  }
+  return null;
+}
+/* effective Max = newest evidence: RIR-0 session vs manual entry (whichever is more recent) */
+function effMaxOf(e){
+  const man=getWork(e.name), mts=getWorkTs(e.name);
+  const am=autoMaxInfo(e.name);
+  if(am&&(man==null||am.ts>mts)) return {val:am.kg, auto:true, date:am.date};
+  return man!=null?{val:man, auto:false}:null;
 }
 /* Max = the weight where you fail within the rep range (RIR 0).
    Easier weeks (higher target RIR) need less weight for the same reps:
@@ -569,7 +603,8 @@ function effTargetRir(e){
   return nums.map(parseFloat).reduce((a,b)=>a+b,0)/nums.length;
 }
 function workTarget(e){
-  const m=getWork(e.name); if(!m) return null;
+  const em=effMaxOf(e); if(!em) return null;
+  const m=em.val;
   const mt=String(e.reps||'').match(/(\d+)(?!.*\d)/); // top of the rep range
   const rt=mt?parseInt(mt[1]):null;
   const rir=effTargetRir(e);
@@ -802,7 +837,7 @@ function prevTopSet(name,date){
   for(const s of listSessions()){
     if(s.date>=date) continue;
     const e=s.entries.find(x=>x.exName===name);
-    if(e){ const t=topSet(e.sets); if(t) return {date:s.date,kg:t.kg,reps:t.reps}; }
+    if(e){ const t=topSet(e.sets); if(t) return {date:s.date,kg:t.kg,reps:t.reps,week:s.week,dayId:s.dayId}; }
   }
   return null;
 }
@@ -834,50 +869,32 @@ function renderGate(mode, slot, err){
         <div class="pcard ${p.id}" data-id="${p.id}">
           <div class="avatar">${p.name?esc(p.name[0].toUpperCase()):'+'}</div>
           <div class="nm">${p.name?esc(p.name):'New profile'}</div>
-          <div class="sub">${p.name?'Enter PIN':'Set up'}</div>
+          <div class="sub">${p.name?'Tap to enter':'Set up'}</div>
         </div>`).join('')}
       </div>
       <div class="gcloud"><button id="gCloud">☁ Cloud sync ${fbStatus==='on'?'is on':'setup'}</button></div></div>`;
     app.querySelectorAll('.pcard').forEach(c=>{
       c.onclick=()=>{ const p=getProfiles().find(x=>x.id===c.dataset.id);
-        renderGate(p.name?'pin':'setup', p.id); };
+        if(p.name) enter(p); else renderGate('setup', p.id); };
     });
     $('#gCloud').onclick=cloudSetup;
     return;
   }
   const p=ps.find(x=>x.id===slot);
-  if(mode==='setup'){
-    app.innerHTML=`<div class="gate"><h1>New profile</h1><p>Choose a name and a 4-digit PIN.</p>
-      <div class="pinbox">
-        <div class="nmfld"><input class="nm" id="gName" placeholder="Your name" maxlength="14" value="${esc(p.name)}"></div>
-        <input id="gPin" inputmode="numeric" maxlength="4" placeholder="••••" type="password">
-        <div class="err" id="gErr">${err||''}</div>
-        <div class="gbtns"><button class="back" id="gBack">Back</button><button class="go" id="gGo">Create</button></div>
-      </div></div>`;
-    $('#gBack').onclick=()=>renderGate();
-    $('#gGo').onclick=()=>{
-      const nm=str($('#gName').value), pin=str($('#gPin').value);
-      if(!nm) return renderGate('setup',slot,'Please enter a name.');
-      if(!/^\d{4}$/.test(pin)) return renderGate('setup',slot,'PIN must be 4 digits.');
-      const all=getProfiles(); const t=all.find(x=>x.id===slot); t.name=nm; t.pin=pin; saveProfiles(all);
-      enter(t);
-    };
-    return;
-  }
-  // pin entry
-  app.innerHTML=`<div class="gate"><h1>Hi, ${esc(p.name)}</h1><p>Enter your 4-digit PIN.</p>
+  // setup: just a name — no PIN needed for a family app
+  app.innerHTML=`<div class="gate"><h1>New profile</h1><p>What's your name?</p>
     <div class="pinbox">
-      <input id="gPin" inputmode="numeric" maxlength="4" placeholder="••••" type="password" autofocus>
+      <div class="nmfld"><input class="nm" id="gName" placeholder="Your name" maxlength="14" value="${esc(p.name)}"></div>
       <div class="err" id="gErr">${err||''}</div>
-      <div class="gbtns"><button class="back" id="gBack">Back</button><button class="go" id="gGo">Unlock</button></div>
+      <div class="gbtns"><button class="back" id="gBack">Back</button><button class="go" id="gGo">Create</button></div>
     </div></div>`;
   $('#gBack').onclick=()=>renderGate();
-  const tryPin=()=>{
-    if(str($('#gPin').value)===p.pin) enter(p);
-    else renderGate('pin',slot,'Wrong PIN — try again.');
+  $('#gGo').onclick=()=>{
+    const nm=str($('#gName').value);
+    if(!nm) return renderGate('setup',slot,'Please enter a name.');
+    const all=getProfiles(); const t=all.find(x=>x.id===slot); t.name=nm; saveProfiles(all);
+    enter(t);
   };
-  $('#gGo').onclick=tryPin;
-  $('#gPin').addEventListener('input',e=>{ if(e.target.value.length===4) tryPin(); });
 }
 function enter(p){
   activeP=p;
@@ -1049,7 +1066,8 @@ function renderList(){
       list.appendChild(card); return;
     }
     const prev=prevTopSet(e.name,curDate);
-    const workVal=getWork(e.name);              // what the user typed (their max for the rep range)
+    const em=effMaxOf(e);                       // manual entry or auto (last RIR-0 session)
+    const workVal=em?em.val:null;
     const workScaled=workTarget(e);             // scaled down for this week's RIR target
     const baseKg=topKg(entry.sets)||(prev?prev.kg:null)||workScaled;
     const nWu=entry.wsets.length;
@@ -1083,15 +1101,17 @@ function renderList(){
         <button class="rm">×</button>
       </div>`;
     });
-    let lastHtml='';
+    // last-session line, shown right above the Max line (with the vs-last chip)
+    let lastLine='';
     if(prev){
+      const prevRir=rirTargetOf(e.name,prev.week,prev.dayId);
       const cur=topKg(entry.sets);
       let chip='';
       if(cur!==null){
         const d=+(cur-prev.kg).toFixed(2);
         chip=`<span class="delta ${d>0?'up':(d<0?'dn':'eq')}">${d===0?'= last':(d>0?'+':'')+d+' kg'}</span>`;
       }
-      lastHtml=`<div class="last"><span>${fmtShort(prev.date)}: <span class="lv">${prev.kg}kg × ${esc(prev.reps||'—')}</span></span>${chip}</div>`;
+      lastLine=`<div class="maxline hist">Last ${fmtShort(prev.date)}${prevRir!=null?` · <b>RIR ${esc(prevRir)}</b>`:''} · <b>${prev.kg}kg × ${esc(prev.reps||'—')}</b> ${chip}</div>`;
     }
     const play='<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
     let vids='';
@@ -1110,8 +1130,9 @@ function renderList(){
         <div class="nm">
           <h3 class="exlink" title="View history">${esc(e.name)} <span class="hico">📈</span></h3>
           <div class="tgt">${esc(e.reps)} reps · ${effChip(e)} · ${esc(e.rest||'—')} between sets</div>
-          <div class="maxline">Max <input class="maxin" inputmode="decimal" placeholder="${prev?String(+prev.kg):'?'}" value="${workVal!=null?workVal:''}"><span class="mu">kg</span>
-            <span class="sg">/ ${esc(e.reps)} reps${workVal&&workScaled&&workScaled!==workVal?` → today ≈ <b>${workScaled}kg</b> (easier week)`:''}</span></div>
+          ${lastLine}
+          <div class="maxline">Today · Max <input class="maxin" inputmode="decimal" placeholder="?" value="${workVal!=null?workVal:''}"><span class="mu">kg</span>
+            <span class="sg">/ ${esc(e.reps)} reps${em&&em.auto?` <span class="estl" title="From your last RIR-0 session (${em.date})">auto</span>`:''}${workVal&&workScaled&&workScaled!==workVal?` → today ≈ <b>${workScaled}kg</b> (easier week)`:''}</span></div>
         </div>
         <button class="exdonebtn ${entry.done?'on':''}" title="Mark exercise done">✓</button>
       </div>
@@ -1119,7 +1140,6 @@ function renderList(){
       <div style="height:6px"></div>
       <div class="vids">${vids}</div>
       ${e.notes?`<details class="exnotes"><summary>ⓘ Technique notes</summary><div>${esc(e.notes)}</div></details>`:''}
-      ${lastHtml}
       <div class="sets">${setsHtml}<button class="addset">+ Add set</button></div>`;
     const touch=()=>{ if(entry._auto){ entry._auto=false;
       card.querySelectorAll('input.auto').forEach(i=>i.classList.remove('auto')); } };
