@@ -209,7 +209,8 @@ input.auto{color:var(--mut2)} /* suggested (untouched) numbers look pale until c
 .shint{margin:9px 0 -4px 30px; font-size:11px; color:var(--mut); line-height:1.35}
 .shint b{color:var(--gold-dk)}
 .tech{margin:6px 14px 0; padding:7px 11px; background:rgba(216,165,49,.13); border:1px solid rgba(216,165,49,.5);
-  border-radius:10px; font-size:12px; color:#6b5410; font-weight:600}
+  border-radius:10px; font-size:12px; color:#6b5410; font-weight:600; line-height:1.45}
+.tech .techx{font-weight:400; color:#7a6220}
 .exdonebtn{flex:0 0 auto; border:1.5px solid var(--line); background:transparent; color:var(--mut);
   border-radius:10px; width:34px; height:34px; font-size:16px; cursor:pointer; line-height:1}
 .exdonebtn.on{background:var(--olive); border-color:var(--olive); color:#fff}
@@ -637,6 +638,20 @@ function effChip(e){
 function wsRangeNote(e){
   const wsl=String(e.wsLabel||e.ws);
   if(/\d\s*[–-]\s*\d/.test(wsl)) return ` · program says ${esc(wsl)} sets — unused rows drop when you ✓ done`;
+  return '';
+}
+/* last-set intensity techniques — one-line how-to (definitions from the PDFs) */
+function techExplain(t){
+  const s=String(t||'').toLowerCase();
+  if(/mechanical drop/.test(s)) return 'at failure, switch to an easier variation of the same movement (grip/angle) and keep repping — same weight.';
+  if(/two drop/.test(s)) return 'at failure, strip ~25% and go to failure again — twice (3 back-to-back sets).';
+  if(/drop ?set/.test(s)) return 'at failure, strip ~25% of the weight and go straight to failure again.';
+  if(/integrated partial/.test(s)) return 'on every set: when full reps get impossible, keep repping only the stretched half until failure.';
+  if(/lengthened|long-length|llp/.test(s)) return 'after full-ROM failure, keep repping only the stretched half of the movement until you fail again.';
+  if(/myo/.test(s)) return 'go to failure, rest 5s, squeeze out 2 reps — repeat 5s + 2 reps until you can’t get 2 full reps.';
+  if(/static hold/.test(s)) return 'after the last rep, hold the stretched bottom position under load for ~30 seconds.';
+  if(/static stretch/.test(s)) return 'right after the last set, hold a weighted stretch of that muscle for ~30 seconds.';
+  if(/failure/.test(s)) return 'take the last set all the way to failure' + (/llp|extend/.test(s)?', then add stretched-half partial reps.':'.');
   return '';
 }
 /* per-set instruction above each input row — always in RIR (reps you keep).
@@ -1199,7 +1214,7 @@ function renderList(){
         </div>
         <button class="exdonebtn ${entry.done?'on':''}" title="Mark exercise done">✓</button>
       </div>
-      ${e.tech?`<div class="tech">★ ${esc(e.tech)}</div>`:''}
+      ${e.tech?`<div class="tech">★ ${esc(e.tech)}${techExplain(e.tech)?`<span class="techx"> — ${esc(techExplain(e.tech))}</span>`:''}</div>`:''}
       <div style="height:6px"></div>
       <div class="vids">${vids}</div>
       ${e.notes?`<details class="exnotes"><summary>ⓘ Technique notes</summary><div>${esc(e.notes)}</div></details>`:''}
@@ -1537,6 +1552,7 @@ function renderLearn(){
         <tr><td>4</td><td>32.5 kg: 10, 10</td><td>repeat the climb</td></tr>
       </table>
       Can't add reps or weight this week? Improving form — especially controlling the negative — and mind-muscle connection also count as overload. Never break form just to claim a rep.
+      <br><br><b>If +2.5 kg is too big a jump</b> (drops you below the rep range): keep the old weight and extend the range instead — e.g. range 6–8 but 32.5 kg only gets you 4–5 reps → stay at 30 kg and aim for 6–10.
       <h4>Early sets vs last set</h4>
       When an exercise has multiple working sets, the early sets are slightly easier (higher RIR / lower RPE); the <b>last set</b> is pushed closest to failure — in later weeks sometimes all the way to failure (RIR 0).
       <h4>Rest times — between sets, not after the exercise</h4>
@@ -1545,6 +1561,25 @@ function renderLearn(){
       walk over and set up the next station (~1–2 min) is usually plenty.
       <h4>Intro &amp; deload weeks</h4>
       Min-Max: week 1 is an <b>intro week</b> (easier, learn the movements), week 7 is a <b>deload</b> (recover — lighter effort on purpose). 365: weeks 1–2 are for finding your working weights.
+    </div></details>
+
+    <details class="ksec"><summary><h3>Last-set intensity techniques (★ on cards)</h3><span class="pm">+</span></summary>
+    <div class="kc">
+      Later blocks add a technique to the <b>final working set</b> of some exercises (the gold ★ banner on the card — variants marked "on all sets" apply to every set). Block 1 has none. How to do each:
+      <table class="cheat">
+        <tr><th>Technique</th><th>How</th></tr>
+        <tr><td>Drop set</td><td>Reach failure → strip ~25% of the weight → straight to failure again. "Two drop sets" = do that twice (3 back-to-back sets).</td></tr>
+        <tr><td>Mechanical drop set</td><td>Reach failure → switch to an easier variation of the same movement (wider grip, better angle) → keep going. Same weight.</td></tr>
+        <tr><td>Lengthened / long-length partials</td><td>Reach full-ROM failure → keep repping only the <b>stretched half</b> of the movement until you fail again.</td></tr>
+        <tr><td>Myo-reps</td><td>Reach failure → rest 5 seconds → 2 reps. Repeat 5s + 2 reps until you can't complete 2 full reps (usually ~3 rounds).</td></tr>
+        <tr><td>Weighted static hold</td><td>After the last rep, hold the stretched bottom position under load for ~30 seconds.</td></tr>
+        <tr><td>Static stretch (30s)</td><td>Right after the last set, hold a weighted stretch of that muscle for ~30 seconds.</td></tr>
+      </table>
+      <h4>What "RIR 0" actually means (from the PDF)</h4>
+      On the big lifts — <b>squat, barbell incline press, leg press, Smith machine lunge</b> — RIR 0 = nothing left, but <b>don't attempt and fail</b> a rep (safety).
+      On all other exercises, RIR 0 = you attempted the next rep and <b>actually failed</b> it.
+      <h4>Rest between exercises</h4>
+      1–5 minutes depending on how demanding the exercise is — heavy compounds ~3–5′, isolation ~1–2′. Between warm-up sets: 0–60s.
     </div></details>
 
     <details class="ksec"><summary><h3>Warm-up protocol</h3><span class="pm">+</span></summary>
