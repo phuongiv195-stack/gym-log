@@ -805,7 +805,20 @@ function dayMeta(pid, week, dayId){
 /* ================= SCHEDULE (training calendar) =================
    Per profile+program: a start date + which weekdays you train.
    The whole program is laid out sequentially onto those weekdays. */
-const DEF_WDAYS={4:[1,2,4,5],5:[1,2,3,4,5],6:[1,2,3,4,5,6],8:[1,2,3,4,5,6]};
+const DEF_WDAYS={4:[1,3,4,5],5:[1,2,3,4,5],6:[1,2,3,4,5,6],8:[1,2,3,4,5,6]};
+/* Jeff's required rest AFTER a given workout (min days). From the data where extracted,
+   plus the 365-family pattern from the PDF (REST DAY after Lower and after Legs). */
+const REST_FALLBACK={jn365:{D2:'1',D5:'1-2'}, btsia:{D2:'1',D5:'1-2'}};
+function restMinAfter(dayId, dayName){
+  const P=PROGRAMS[pid];
+  let r=null;
+  if(P.days){ const d=P.days.find(x=>x.id===dayId); r=d&&d.restAfter; }
+  else if(P.plan){ for(const b of P.plan){ const d=b.days.find(x=>x.id===dayId); if(d&&d.restAfter){ r=d.restAfter; break; } } }
+  if(r==null&&REST_FALLBACK[pid]) r=REST_FALLBACK[pid][dayId];
+  if(r==null) return 0;
+  const m=String(r).match(/\d+/);
+  return m?+m[0]:0;
+}
 function getSched(){ const r=store.get(K(pid,'sched')); if(r){try{return JSON.parse(r)}catch(e){}} return null; }
 function setSched(sc){ if(sc) store.set(K(pid,'sched'),JSON.stringify(sc)); else store.remove(K(pid,'sched')); }
 function schedList(){
@@ -815,8 +828,17 @@ function schedList(){
   for(let w=1;w<=P.weeks;w++) dayList(pid,w).forEach(d=>seq.push({week:w,dayId:d.id,name:d.name}));
   const map={};
   let d=parseDate(sc.start), i=0, guard=0;
-  while(i<seq.length&&guard<3000){
-    if(sc.days.includes(d.getDay())){ map[iso(d)]=Object.assign({idx:i},seq[i]); i++; }
+  let lastMs=null, needRest=0;
+  while(i<seq.length&&guard<4000){
+    if(sc.days.includes(d.getDay())){
+      const gap=lastMs==null?Infinity:Math.round((d.getTime()-lastMs)/86400000);
+      if(gap>=1+needRest){                     // enforce Jeff's rest after the previous workout
+        map[iso(d)]=Object.assign({idx:i},seq[i]);
+        lastMs=d.getTime();
+        needRest=restMinAfter(seq[i].dayId, seq[i].name);
+        i++;
+      }
+    }
     d.setDate(d.getDate()+1); guard++;
   }
   return {map, start:sc.start, end:iso(new Date(d.getTime()-86400000)), total:seq.length};
@@ -1578,10 +1600,17 @@ function renderCalSetup(app, cur){
     </div>
   </main>`;
   const sel=()=>[...app.querySelectorAll('.wdpick button.on')].map(b=>+b.dataset.wd);
+  const restRules=(()=>{
+    const out=[];
+    dayList(pid,1).forEach(d=>{ const r=restMinAfter(d.id,d.name); if(r>0) out.push(`${d.name} → ${r}+ rest day${r>1?'s':''}`); });
+    return out;
+  })();
   const hint=()=>{ const n=sel().length;
-    $('#scHint').innerHTML=n<P.daysPerWeek
+    let t=n<P.daysPerWeek
       ?`⚠ You picked ${n} day${n===1?'':'s'}/week for a ${P.daysPerWeek}×/week program — the plan will stretch longer than ${P.weeks} weeks (that's fine).`
-      :`${n} gym day${n===1?'':'s'} per week — sessions fill those days in program order; everything else is rest.`; };
+      :`${n} gym day${n===1?'':'s'} per week — sessions fill those days in program order; everything else is rest.`;
+    if(restRules.length) t+=`<br>🛡 Jeff's rest rules are enforced automatically (${esc(restRules.join(' · '))}) — if your days are too close, the next session simply slides to a later gym day.`;
+    $('#scHint').innerHTML=t; };
   app.querySelectorAll('.wdpick button').forEach(b=>{ b.onclick=()=>{ b.classList.toggle('on'); hint(); }; });
   hint();
   $('#scGo').onclick=()=>{
