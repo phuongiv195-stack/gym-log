@@ -191,7 +191,9 @@ main{background:var(--paper); color:var(--ink); border-radius:20px 20px 0 0; pad
   color:var(--mut2); border-bottom:1px dashed var(--line); padding-bottom:4px}
 .scap b{color:var(--olive-dk)}
 .slab.wu{color:var(--olive-lt)}
+.slab.xs{color:var(--gold-dk)}
 .srow[data-wu] input{background:#fff; border-style:dashed}
+.srow.xrow input{background:rgba(216,165,49,.06); border-color:rgba(216,165,49,.5); border-style:dashed}
 input.auto{color:var(--mut2)} /* suggested (untouched) numbers look pale until confirmed */
 /* max (1RM) line */
 .maxline{margin-top:5px; font-size:11.5px; color:var(--mut); display:flex; align-items:center; gap:4px; flex-wrap:wrap}
@@ -299,6 +301,7 @@ input.auto{color:var(--mut2)} /* suggested (untouched) numbers look pale until c
 .setpill{font-family:var(--mono); font-size:11.5px; font-weight:700; color:var(--ink);
   background:var(--paper); border:1px solid var(--line); border-radius:8px; padding:3px 7px}
 .setpill.wu{color:var(--mut); border-style:dashed; background:transparent}
+.setpill.xs{color:var(--gold-dk); border-color:rgba(216,165,49,.55); border-style:dashed; background:rgba(216,165,49,.07)}
 .slog{list-style:none; margin:0; padding:0}
 .slog li{background:#fff; border:1px solid var(--line); border-radius:14px; margin:0 2px 10px;
   padding:12px 14px; display:flex; align-items:center; gap:12px; cursor:pointer}
@@ -840,9 +843,14 @@ function progressionPlan(e, date, w, nSets){
     }
   }
   const kg=(pe?topKg(pe.e.sets):null)||workTarget(e);      // fallback: Max field (scaled by target RIR)
-  if(!kg) return null;
   const lo=rng?rng[0]:(parseInt(bottomReps(e.reps))||null);
+  if(!kg) return lo!=null?{kg:null, reps:Array.from({length:nSets},()=>lo), mode:'fresh'}:null; // reps target even without a kg anchor
   return {kg, reps:Array.from({length:nSets},()=>lo), mode:'fresh'};
+}
+/* how many extension (★) rows a technique needs under the last set */
+function techSlots(t){
+  if(!t) return 0;
+  return /two drop/i.test(t)?2:1;
 }
 /* Pre-fill an untouched entry with the plan (shown pale in the UI).
    _auto entries are NOT saved until the user touches the exercise or marks it done. */
@@ -850,10 +858,18 @@ function prefillEntry(entry, e, date, w){
   if(entry.done||hasData(entry.sets)||hasData(entry.wsets)) return;
   const plan=progressionPlan(e, date, w, entry.sets.length);
   if(!plan) return;
+  if(plan.kg==null){ // no kg anchor yet: still pre-fill the exact rep targets
+    entry.sets.forEach((s,i)=>{ s.reps=plan.reps[i]!=null?String(plan.reps[i]):''; s.a=1; });
+    entry._auto=true; return;
+  }
   entry.sets.forEach((s,i)=>{ s.kg=String(plan.kg); s.reps=plan.reps[i]!=null?String(plan.reps[i]):''; s.a=1; }); // a = auto-suggested row
   const n=entry.wsets.length;
   entry.wsets.forEach((s,si)=>{ const p=(WU_PYRAMID[n]||[])[si];
     if(p){ s.kg=String(round25(plan.kg*p[0]/100)); s.reps=bottomReps(p[1]); } });
+  if((entry.xsets||[]).length&&/drop/i.test(e.tech||'')){ // drop sets: pre-fill the −25% weights
+    let k=plan.kg;
+    entry.xsets.forEach(s=>{ k=round25(k*0.75); s.kg=String(k); });
+  }
   entry._auto=true;
 }
 /* on ✓ done: drop suggested rows the user never touched — keep only what was really lifted.
@@ -876,19 +892,25 @@ function buildSession(date, w, d, savedEntries, done, gw){
       const s=(sv&&sv.wsets&&sv.wsets[si])||{};
       return {kg:str(s.kg), reps:str(s.reps), ck:s.ck?1:0};
     });
-    const entry={exName:e.name, done:!!(sv&&sv.done), sets, wsets};
+    // ★ extension rows (drop sets / partials / holds after the last working set)
+    const xsets=Array.from({length:techSlots(e.tech)},(_,si)=>{
+      const s=(sv&&sv.xsets&&sv.xsets[si])||{};
+      return {kg:str(s.kg), reps:str(s.reps), ck:s.ck?1:0};
+    });
+    const entry={exName:e.name, done:!!(sv&&sv.done), sets, wsets, xsets};
     prefillEntry(entry, e, date, w);
     return entry;
   });
   return {date, program:pid, week:w, dayId:d, done:!!done, gw:gw?1:0, entries};
 }
 function commit(){
-  const anyCk=e=>e.sets.some(s=>s.ck)||e.wsets.some(s=>s.ck);
-  const pruned=S.entries.filter(e=>(!e._auto||e.done)&&(hasData(e.sets)||hasData(e.wsets)||anyCk(e)||e.done))
+  const anyCk=e=>e.sets.some(s=>s.ck)||e.wsets.some(s=>s.ck)||(e.xsets||[]).some(s=>s.ck);
+  const pruned=S.entries.filter(e=>(!e._auto||e.done)&&(hasData(e.sets)||hasData(e.wsets)||hasData(e.xsets)||anyCk(e)||e.done))
     .map(e=>({exName:e.exName, done:e.done,
       sets:e.sets.filter(s=>str(s.kg)!==''||str(s.reps)!==''||s.ck).map(s=>({kg:str(s.kg),reps:str(s.reps),ck:s.ck?1:0,a:s.a?1:0})),
-      // keep warm-up slots in place (index = pyramid step); drop only if all empty
-      wsets:(hasData(e.wsets)||e.wsets.some(s=>s.ck))?e.wsets.map(s=>({kg:str(s.kg),reps:str(s.reps),ck:s.ck?1:0})):[]}));
+      // keep warm-up/extension slots in place; drop only if all empty
+      wsets:(hasData(e.wsets)||e.wsets.some(s=>s.ck))?e.wsets.map(s=>({kg:str(s.kg),reps:str(s.reps),ck:s.ck?1:0})):[],
+      xsets:(hasData(e.xsets)||(e.xsets||[]).some(s=>s.ck))?e.xsets.map(s=>({kg:str(s.kg),reps:str(s.reps),ck:s.ck?1:0})):[]}));
   if(pruned.length||S.done||S.gw) store.set(SKEY(S.date), JSON.stringify({date:S.date, program:pid, week:S.week, dayId:S.dayId, done:S.done, gw:S.gw?1:0, entries:pruned}));
   else store.remove(SKEY(S.date));
 }
@@ -1177,11 +1199,12 @@ function renderList(){
     } else {
       setsHtml+=`<div class="scap">No warm-up needed — straight to working sets${wsRangeNote(e)} · ${esc(e.rest||'—')} between sets</div>`;
     }
+    const isHold=/static/i.test(e.tech||'');
     entry.sets.forEach((s,si)=>{
+      const isLast=si===entry.sets.length-1;
       // the ★ technique fires on the LAST working set ("on all sets" variants: every set)
-      const techHere=e.tech&&(si===entry.sets.length-1||/on all sets/i.test(e.tech));
-      const techLine=techHere?`<div class="shint techline">★ then, no rest: ${esc(techExplain(e.tech)||e.tech)}</div>`:'';
-      setsHtml+=`<div class="shint">${setHint(e,si,entry.sets.length,plan)}</div>${techLine}
+      const techHere=e.tech&&(isLast||/on all sets/i.test(e.tech));
+      setsHtml+=`<div class="shint">${setHint(e,si,entry.sets.length,plan)}</div>
       <div class="srow ${s.ck?'ckd':''}" data-si="${si}">
         <div class="slab">S${si+1}</div>
         <div class="fld"><input class="${entry._auto?'auto':''}" inputmode="decimal" placeholder="0" data-f="kg" value="${esc(s.kg)}"><span class="u">kg</span></div>
@@ -1189,6 +1212,19 @@ function renderList(){
         <button class="sck ${s.ck?'on':''}" title="Set done">✓</button>
         <button class="rm">×</button>
       </div>`;
+      if(techHere) setsHtml+=`<div class="shint techline">★ then, no rest: ${esc(techExplain(e.tech)||e.tech)}</div>`;
+      // ★ extension rows to track what the technique produced (drops / partial reps / hold seconds)
+      if(isLast&&(entry.xsets||[]).length){
+        entry.xsets.forEach((xs,xi)=>{
+          setsHtml+=`<div class="srow xrow ${xs.ck?'ckd':''}" data-si="${xi}" data-x="1">
+            <div class="slab xs">★${entry.xsets.length>1?xi+1:''}</div>
+            <div class="fld"><input class="${entry._auto?'auto':''}" inputmode="decimal" placeholder="0" data-f="kg" value="${esc(xs.kg)}"><span class="u">kg</span></div>
+            <div class="fld"><input inputmode="numeric" placeholder="0" data-f="reps" value="${esc(xs.reps)}"><span class="u">${isHold?'sec':'reps'}</span></div>
+            <button class="sck ${xs.ck?'on':''}" title="Done">✓</button>
+            <span></span>
+          </div>`;
+        });
+      }
     });
     // last-session line, shown right above the Max line
     let lastLine='';
@@ -1229,10 +1265,12 @@ function renderList(){
     card.querySelectorAll('.srow').forEach(row=>{
       const si=+row.dataset.si;
       const isWu=row.dataset.wu==='1';
+      const isX=row.dataset.x==='1';
+      const arrOf=()=>isX?entry.xsets:(isWu?entry.wsets:entry.sets);
       row.querySelectorAll('input').forEach(inp=>{
         inp.addEventListener('input',()=>{
           touch();
-          const s0=(isWu?entry.wsets:entry.sets)[si];
+          const s0=arrOf()[si];
           s0[inp.dataset.f]=inp.value; delete s0.a; commit();
           renderDays();
         });
@@ -1240,11 +1278,11 @@ function renderList(){
       const ck=row.querySelector('.sck');
       if(ck) ck.onclick=()=>{
         touch(); // checking a set confirms the pre-filled numbers
-        const arr=isWu?entry.wsets:entry.sets;
+        const arr=arrOf();
         arr[si].ck=arr[si].ck?0:1;
         if(arr[si].ck) delete arr[si].a; // a checked set was really done
         // all working sets checked -> exercise done (collapses)
-        if(!isWu && entry.sets.length && entry.sets.every(s=>s.ck)) { entry.done=true; openSet.delete(ei); finishExercise(entry); }
+        if(!isWu && !isX && entry.sets.length && entry.sets.every(s=>s.ck)) { entry.done=true; openSet.delete(ei); finishExercise(entry); }
         commit(); renderList(); renderDays();
       };
       const rm=row.querySelector('.rm');
@@ -1348,9 +1386,10 @@ function renderProgress(){
     html+='<ul class="slog">';
     rows.forEach(({s,e})=>{
       const line=(arr,pfx)=>arr.filter(hasAny).map(t=>
-        `<span class="setpill${pfx==='W'?' wu':''}">${pfx}${arr.indexOf(t)+1} · ${str(t.kg)||'—'}kg × ${str(t.reps)||'—'}${t.ck?' ✓':''}</span>`).join('');
+        `<span class="setpill${pfx==='W'?' wu':(pfx==='★'?' xs':'')}">${pfx}${arr.indexOf(t)+1} · ${str(t.kg)||'—'}kg × ${str(t.reps)||'—'}${t.ck?' ✓':''}</span>`).join('');
       const wLine=(e.wsets||[]).some(hasAny)?`<div class="setline">${line(e.wsets,'W')}</div>`:'';
       const sLine=(e.sets||[]).some(hasAny)?`<div class="setline">${line(e.sets,'S')}</div>`:'';
+      const xLine=(e.xsets||[]).some(hasAny)?`<div class="setline">${line(e.xsets,'★')}</div>`:'';
       let vol=0; (e.sets||[]).forEach(t=>{const k=parseFloat(t.kg),r=parseFloat(t.reps); if(!isNaN(k)&&!isNaN(r)) vol+=k*r;});
       html+=`<li data-date="${s.date}">
         <div class="ck">${(e.done||s.done)?'✓':''}</div>
