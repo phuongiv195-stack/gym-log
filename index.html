@@ -203,6 +203,7 @@ input.auto{color:var(--mut2)} /* suggested (untouched) numbers look pale until c
 .maxline .sg b{font-family:var(--mono); color:var(--gold-dk)}
 .maxline .estl{font-size:9.5px; letter-spacing:.8px; text-transform:uppercase; font-weight:700; color:var(--good);
   border:1px solid rgba(79,138,77,.45); border-radius:8px; padding:1px 5px}
+.maxline .estl.up{color:var(--gold-dk); border-color:rgba(216,165,49,.6); background:rgba(216,165,49,.12)}
 .maxline.hist{color:var(--mut)}
 .maxline.hist b{font-family:var(--mono); color:var(--olive-dk)}
 .shint{margin:9px 0 -4px 30px; font-size:11px; color:var(--mut); line-height:1.35}
@@ -638,21 +639,23 @@ function wsRangeNote(e){
   if(/\d\s*[–-]\s*\d/.test(wsl)) return ` · program says ${esc(wsl)} sets — unused rows drop when you ✓ done`;
   return '';
 }
-/* per-set instruction above each input row — always in RIR (reps you keep) */
-function setHint(e, si, total){
+/* per-set instruction above each input row — always in RIR (reps you keep).
+   With a progression plan we show THIS week's exact rep target instead of the range. */
+function setHint(e, si, total, plan){
   const last=si>=total-1;
   const f=e.eff||{};
+  const tgt=(plan&&plan.reps&&plan.reps[si]!=null)?`<b>${plan.reps[si]}</b> reps`:`${esc(e.reps)} reps`;
   const say=v=>String(v)==='0'?'<b>RIR 0</b> — all out, to failure 🔥':`<b>RIR ${v}</b> — stop with ${v} rep${String(v)==='1'?'':'s'} left`;
   if(f.left!=null){
     // when the program gives one target (365's RPE = last set), early sets go ~1 rep easier
     const lastV=(f.last!=null?f.last:f.left);
     const early=(f.last!=null)?f.left:f.left+(total>1?1:0);
-    if(total<=1) return `${esc(e.reps)} reps · ${say(lastV)}`;
-    if(!last) return `${esc(e.reps)} reps · ${say(early)}`;
-    return `${esc(e.reps)} reps · last set: ${say(lastV)}`;
+    if(total<=1) return `${tgt} · ${say(lastV)}`;
+    if(!last) return `${tgt} · ${say(early)}`;
+    return `${tgt} · last set: ${say(lastV)}`;
   }
-  if(!last&&total>1) return `${esc(e.reps)} reps · slightly easier than the last set`;
-  return `${esc(e.reps)} reps · <b>${esc(e.intensity)}</b>${total>1?' — hardest set':''}`;
+  if(!last&&total>1) return `${tgt} · slightly easier than the last set`;
+  return `${tgt} · <b>${esc(e.intensity)}</b>${total>1?' — hardest set':''}`;
 }
 
 /* ================= PROGRAM ADAPTER =================
@@ -790,17 +793,14 @@ function prevEntryOf(name,date){
   }
   return null;
 }
-/* Pre-fill an untouched entry with suggested numbers (shown pale in the UI).
-   Applies Jeff's DOUBLE PROGRESSION vs the last session:
+/* Today's exact plan for an exercise — Jeff's DOUBLE PROGRESSION vs the last session:
    - a set below the top of the rep range -> same weight, +1 rep on the first such set
    - ALL sets at the top of the range   -> +2.5 kg, reps reset to the bottom
    - deload/intro weeks                 -> repeat last numbers, no push
-   _auto entries are NOT saved until the user touches the exercise or marks it done. */
-function prefillEntry(entry, e, date, w){
-  if(entry.done||hasData(entry.sets)||hasData(entry.wsets)) return;
-  let workKg=null, repsPlan=null;
-  const pe=prevEntryOf(e.name,date);
+   Returns {kg, reps:[per set], mode:'up'|'push'|'repeat'|'fresh'} or null. */
+function progressionPlan(e, date, w, nSets){
   const rng=repRange(e.reps);
+  const pe=prevEntryOf(e.name,date);
   const easy=/deload|intro/i.test(String((PROGRAMS[pid].banners||{})[String(w)]||''));
   if(pe&&rng){
     const [lo,hi]=rng;
@@ -810,31 +810,34 @@ function prefillEntry(entry, e, date, w){
       const prevKg=Math.max(...kgs);
       const repsArr=prevSets.map(t=>parseInt(t.reps));
       const maxedAll=repsArr.length>0&&repsArr.every(r=>!isNaN(r)&&r>=hi);
-      if(maxedAll&&!easy){
-        workKg=round25(prevKg+2.5);                       // range maxed -> up a step, back to bottom
-        repsPlan=entry.sets.map(()=>lo);
-      } else {
-        workKg=prevKg;
-        let bumped=easy;                                   // no push on deload/intro weeks
-        repsPlan=entry.sets.map((s,i)=>{
-          const valid=repsArr.filter(r=>!isNaN(r));
-          const pr=(i<repsArr.length&&!isNaN(repsArr[i]))?repsArr[i]:(valid.length?valid[valid.length-1]:lo);
-          let t=Math.min(Math.max(pr,lo),hi);
-          if(!bumped&&t<hi){ t+=1; bumped=true; }          // add a rep to the first set below the top
-          return t;
-        });
-      }
+      if(maxedAll&&!easy)
+        return {kg:round25(prevKg+2.5), reps:Array.from({length:nSets},()=>lo), mode:'up'};
+      let bumped=easy;                                     // no push on deload/intro weeks
+      const reps=Array.from({length:nSets},(_,i)=>{
+        const valid=repsArr.filter(r=>!isNaN(r));
+        const pr=(i<repsArr.length&&!isNaN(repsArr[i]))?repsArr[i]:(valid.length?valid[valid.length-1]:lo);
+        let t=Math.min(Math.max(pr,lo),hi);
+        if(!bumped&&t<hi){ t+=1; bumped=true; }            // add a rep to the first set below the top
+        return t;
+      });
+      return {kg:prevKg, reps, mode:easy?'repeat':'push'};
     }
   }
-  if(workKg==null){
-    workKg=(pe?topKg(pe.e.sets):null)||workTarget(e);      // fallback: Max field (scaled by target RIR)
-    if(!workKg) return;
-    repsPlan=entry.sets.map(()=>bottomReps(e.reps));
-  }
-  entry.sets.forEach((s,i)=>{ s.kg=String(workKg); s.reps=String(repsPlan[i]!=null?repsPlan[i]:''); s.a=1; }); // a = auto-suggested row
+  const kg=(pe?topKg(pe.e.sets):null)||workTarget(e);      // fallback: Max field (scaled by target RIR)
+  if(!kg) return null;
+  const lo=rng?rng[0]:(parseInt(bottomReps(e.reps))||null);
+  return {kg, reps:Array.from({length:nSets},()=>lo), mode:'fresh'};
+}
+/* Pre-fill an untouched entry with the plan (shown pale in the UI).
+   _auto entries are NOT saved until the user touches the exercise or marks it done. */
+function prefillEntry(entry, e, date, w){
+  if(entry.done||hasData(entry.sets)||hasData(entry.wsets)) return;
+  const plan=progressionPlan(e, date, w, entry.sets.length);
+  if(!plan) return;
+  entry.sets.forEach((s,i)=>{ s.kg=String(plan.kg); s.reps=plan.reps[i]!=null?String(plan.reps[i]):''; s.a=1; }); // a = auto-suggested row
   const n=entry.wsets.length;
   entry.wsets.forEach((s,si)=>{ const p=(WU_PYRAMID[n]||[])[si];
-    if(p){ s.kg=String(round25(workKg*p[0]/100)); s.reps=bottomReps(p[1]); } });
+    if(p){ s.kg=String(round25(plan.kg*p[0]/100)); s.reps=bottomReps(p[1]); } });
   entry._auto=true;
 }
 /* on ✓ done: drop suggested rows the user never touched — keep only what was really lifted.
@@ -1135,12 +1138,13 @@ function renderList(){
     const em=effMaxOf(e);                       // manual entry or auto (last RIR-0 session)
     const workVal=em?em.val:null;
     const workScaled=workTarget(e);             // scaled down for this week's RIR target
+    const plan=progressionPlan(e,curDate,week,entry.sets.length); // today's exact kg × reps
     const baseKg=topKg(entry.sets)||(prev?prev.kg:null)||workScaled;
     const nWu=entry.wsets.length;
     const [wLo,wHi]=wuRange(e.wu);
     let setsHtml='';
     if(nWu>0){
-      setsHtml+=`<div class="scap"><b>Warm-up</b> · ${wLo!==wHi?esc(e.wu)+' sets — '+wHi+' if cold, '+wLo+' if already warm':nWu+' set'+(nWu>1?'s':'')} · light · ~30–60s between sets</div>`;
+      setsHtml+=`<div class="scap"><b>Warm-up</b> · ${wLo!==wHi?esc(e.wu)+' sets — '+wHi+' if cold, '+wLo+' if already warm':nWu+' set'+(nWu>1?'s':'')} · reps: anywhere in the range, just get warm · ~30–60s between sets</div>`;
       entry.wsets.forEach((s,si)=>{
         const p=(WU_PYRAMID[nWu]||[])[si];
         const hint=p?`~${p[0]}% × ${p[1]} reps`:'extra warm-up';
@@ -1158,7 +1162,7 @@ function renderList(){
       setsHtml+=`<div class="scap">No warm-up needed — straight to working sets${wsRangeNote(e)} · ${esc(e.rest||'—')} between sets</div>`;
     }
     entry.sets.forEach((s,si)=>{
-      setsHtml+=`<div class="shint">${setHint(e,si,entry.sets.length)}</div>
+      setsHtml+=`<div class="shint">${setHint(e,si,entry.sets.length,plan)}</div>
       <div class="srow ${s.ck?'ckd':''}" data-si="${si}">
         <div class="slab">S${si+1}</div>
         <div class="fld"><input class="${entry._auto?'auto':''}" inputmode="decimal" placeholder="0" data-f="kg" value="${esc(s.kg)}"><span class="u">kg</span></div>
@@ -1191,8 +1195,7 @@ function renderList(){
           <h3 class="exlink" title="View history">${esc(e.name)} <span class="hico">📈</span></h3>
           <div class="tgt">${esc(e.reps)} reps · ${effChip(e)} · ${esc(e.rest||'—')} between sets</div>
           ${lastLine}
-          <div class="maxline">Today · Max <input class="maxin" inputmode="decimal" placeholder="?" value="${workVal!=null?workVal:''}"><span class="mu">kg</span>
-            <span class="sg">/ ${esc(e.reps)} reps${em&&em.auto?` <span class="estl" title="From your last RIR-0 session (${em.date})">auto</span>`:''}${workVal&&workScaled&&workScaled!==workVal?` → today ≈ <b>${workScaled}kg</b> (easier week)`:''}</span></div>
+          <div class="maxline">${plan?`Today <b>${plan.kg}kg × ${plan.reps[0]!=null?plan.reps[0]:'—'}</b>${plan.mode==='up'?` <span class="estl up">↑ +2.5kg</span>`:''}${plan.mode==='repeat'?` <span class="estl">deload — repeat</span>`:''} · `:''}Max <input class="maxin" inputmode="decimal" placeholder="?" value="${workVal!=null?workVal:''}"><span class="mu">kg</span>${em&&em.auto?` <span class="estl" title="From your last RIR-0 session (${em.date})">auto</span>`:''}</div>
         </div>
         <button class="exdonebtn ${entry.done?'on':''}" title="Mark exercise done">✓</button>
       </div>
