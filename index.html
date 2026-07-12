@@ -780,14 +780,58 @@ function listSessions(p){
 }
 function wuCount(e){ const [,hi]=wuRange(e.wu); return Math.min(4,Math.max(0,hi)); }
 const bottomReps=r=>{ const m=String(r||'').match(/\d+/); return m?m[0]:''; };
+const repRange=r=>{ const m=String(r||'').match(/(\d+)\s*[–-]\s*(\d+)/); if(m) return [+m[1],+m[2]]; const n=parseInt(r); return isNaN(n)?null:[n,n]; };
+/* full previous entry (all sets) for an exercise before `date` */
+function prevEntryOf(name,date){
+  for(const s of listSessions()){
+    if(s.date>=date) continue;
+    const e=s.entries.find(x=>x.exName===name);
+    if(e&&(e.sets||[]).some(t=>str(t.kg)!==''||str(t.reps)!=='')) return {e, week:s.week, dayId:s.dayId, date:s.date};
+  }
+  return null;
+}
 /* Pre-fill an untouched entry with suggested numbers (shown pale in the UI).
+   Applies Jeff's DOUBLE PROGRESSION vs the last session:
+   - a set below the top of the rep range -> same weight, +1 rep on the first such set
+   - ALL sets at the top of the range   -> +2.5 kg, reps reset to the bottom
+   - deload/intro weeks                 -> repeat last numbers, no push
    _auto entries are NOT saved until the user touches the exercise or marks it done. */
-function prefillEntry(entry, e, date){
+function prefillEntry(entry, e, date, w){
   if(entry.done||hasData(entry.sets)||hasData(entry.wsets)) return;
-  const prev=prevTopSet(e.name,date);
-  const workKg=(prev?prev.kg:null)||workTarget(e); // last session beats the Max field; Max scales by target RIR
-  if(!workKg) return;
-  entry.sets.forEach(s=>{ s.kg=String(workKg); s.reps=bottomReps(e.reps); s.a=1; }); // a = auto-suggested row
+  let workKg=null, repsPlan=null;
+  const pe=prevEntryOf(e.name,date);
+  const rng=repRange(e.reps);
+  const easy=/deload|intro/i.test(String((PROGRAMS[pid].banners||{})[String(w)]||''));
+  if(pe&&rng){
+    const [lo,hi]=rng;
+    const prevSets=pe.e.sets.filter(t=>str(t.kg)!==''||str(t.reps)!=='');
+    const kgs=prevSets.map(t=>parseFloat(t.kg)).filter(n=>!isNaN(n));
+    if(kgs.length){
+      const prevKg=Math.max(...kgs);
+      const repsArr=prevSets.map(t=>parseInt(t.reps));
+      const maxedAll=repsArr.length>0&&repsArr.every(r=>!isNaN(r)&&r>=hi);
+      if(maxedAll&&!easy){
+        workKg=round25(prevKg+2.5);                       // range maxed -> up a step, back to bottom
+        repsPlan=entry.sets.map(()=>lo);
+      } else {
+        workKg=prevKg;
+        let bumped=easy;                                   // no push on deload/intro weeks
+        repsPlan=entry.sets.map((s,i)=>{
+          const valid=repsArr.filter(r=>!isNaN(r));
+          const pr=(i<repsArr.length&&!isNaN(repsArr[i]))?repsArr[i]:(valid.length?valid[valid.length-1]:lo);
+          let t=Math.min(Math.max(pr,lo),hi);
+          if(!bumped&&t<hi){ t+=1; bumped=true; }          // add a rep to the first set below the top
+          return t;
+        });
+      }
+    }
+  }
+  if(workKg==null){
+    workKg=(pe?topKg(pe.e.sets):null)||workTarget(e);      // fallback: Max field (scaled by target RIR)
+    if(!workKg) return;
+    repsPlan=entry.sets.map(()=>bottomReps(e.reps));
+  }
+  entry.sets.forEach((s,i)=>{ s.kg=String(workKg); s.reps=String(repsPlan[i]!=null?repsPlan[i]:''); s.a=1; }); // a = auto-suggested row
   const n=entry.wsets.length;
   entry.wsets.forEach((s,si)=>{ const p=(WU_PYRAMID[n]||[])[si];
     if(p){ s.kg=String(round25(workKg*p[0]/100)); s.reps=bottomReps(p[1]); } });
@@ -814,7 +858,7 @@ function buildSession(date, w, d, savedEntries, done, gw){
       return {kg:str(s.kg), reps:str(s.reps), ck:s.ck?1:0};
     });
     const entry={exName:e.name, done:!!(sv&&sv.done), sets, wsets};
-    prefillEntry(entry, e, date);
+    prefillEntry(entry, e, date, w);
     return entry;
   });
   return {date, program:pid, week:w, dayId:d, done:!!done, gw:gw?1:0, entries};
@@ -1123,17 +1167,11 @@ function renderList(){
         <button class="rm">×</button>
       </div>`;
     });
-    // last-session line, shown right above the Max line (with the vs-last chip)
+    // last-session line, shown right above the Max line
     let lastLine='';
     if(prev){
       const prevRir=rirTargetOf(e.name,prev.week,prev.dayId);
-      const cur=topKg(entry.sets);
-      let chip='';
-      if(cur!==null){
-        const d=+(cur-prev.kg).toFixed(2);
-        chip=`<span class="delta ${d>0?'up':(d<0?'dn':'eq')}">${d===0?'= last':(d>0?'+':'')+d+' kg'}</span>`;
-      }
-      lastLine=`<div class="maxline hist">Last ${fmtShort(prev.date)}${prevRir!=null?` · <b>RIR ${esc(prevRir)}</b>`:''} · <b>${prev.kg}kg × ${esc(prev.reps||'—')}</b> ${chip}</div>`;
+      lastLine=`<div class="maxline hist">Last ${fmtShort(prev.date)}${prevRir!=null?` · <b>RIR ${esc(prevRir)}</b>`:''} · <b>${prev.kg}kg × ${esc(prev.reps||'—')}</b></div>`;
     }
     const play='<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
     let vids='';
@@ -1175,13 +1213,6 @@ function renderList(){
           const s0=(isWu?entry.wsets:entry.sets)[si];
           s0[inp.dataset.f]=inp.value; delete s0.a; commit();
           renderDays();
-          if(isWu) return; // warm-ups don't affect the progress chip
-          const el=card.querySelector('.delta');
-          if(el&&prev){ const cv=topKg(entry.sets);
-            if(cv===null){ el.className='delta eq'; el.textContent='—'; }
-            else{ const d=+(cv-prev.kg).toFixed(2);
-              el.className='delta '+(d>0?'up':(d<0?'dn':'eq'));
-              el.textContent=d===0?'= last':(d>0?'+':'')+d+' kg'; } }
         });
       });
       const ck=row.querySelector('.sck');
