@@ -502,6 +502,7 @@ input.auto{color:var(--mut2)} /* suggested (untouched) numbers look pale until c
 .setbtns .mini{border:1px solid var(--olive); background:var(--olive-dk); color:#fff; border-radius:999px;
   padding:9px 14px; font-family:var(--disp); font-weight:600; font-size:12.5px; letter-spacing:.4px; text-transform:uppercase; cursor:pointer}
 .setbtns .mini.danger{background:transparent; color:var(--bad); border-color:var(--bad)}
+.buildtag{text-align:right; font-size:10px; color:var(--mut2); padding-top:8px; font-family:var(--mono)}
 
 /* ---- Modern facelift: pill tabs, softer geometry, gradient accents ---- */
 .tabs{gap:7px; padding-bottom:10px}
@@ -1286,6 +1287,7 @@ function renderHome(){
       <div class="setlbl"><b style="color:var(--bad)">Clear all data</b><span>Wipes both profiles, local + cloud. For removing test data.</span></div>
       <div class="setbtns"><button id="clrBtn" class="mini danger">🗑 Clear</button></div>
     </div>
+    <div class="buildtag">build 0712.2206</div>
   </div></main>`;
   app.innerHTML=html;
   app.querySelectorAll('.progcard').forEach(c=>{
@@ -1578,15 +1580,17 @@ function changeWeek(d){
   const P=PROGRAMS[pid];
   const nw=Math.min(P.weeks,Math.max(1,week+d));
   if(nw===week) return;
-  const confirmed=S.entries.filter(en=>!en._auto&&(hasData(en.sets)||hasData(en.wsets)||en.done));
-  if(confirmed.length&&!confirm('This date has Week '+week+' logged. Move this date to Week '+nw+'? Your logged numbers become the "Last time" baseline and the new week is planned from them.')) return;
+  const real=S.entries.filter(en=>!en._auto&&(hasData(en.sets)||hasData(en.wsets)||en.done));
+  if(real.length&&!confirm('This date has Week '+week+' logged. Plan Week '+nw+' from those numbers (they become the "Last time" baseline)?')) return;
+  // baseline = whatever numbers are on screen right now (suggested or logged)
+  const shown=S.entries.filter(en=>(en.sets||[]).some(s=>str(s.kg)!==''&&str(s.reps)!==''));
+  const oldWeek=week;
   week=nw; store.set(K(pid,'pos','w'),week);
   const ids=dayList(pid,week).map(x=>x.id);
   if(!ids.includes(dayId)){ dayId=ids[0]; store.set(K(pid,'pos','d'),dayId); }
-  if(confirmed.length){
-    // logged numbers act as the previous session -> the new week progresses from them
+  if(d>0&&shown.length){
     const ov={};
-    confirmed.forEach(en=>{ ov[en.exName]={e:en, week:week-d, dayId, date:curDate}; });
+    shown.forEach(en=>{ ov[en.exName]={e:en, week:oldWeek, dayId, date:curDate}; });
     PREV_OVERRIDE=ov;
     S=buildSession(curDate,week,dayId,null,S.done,S.gw);
     PREV_OVERRIDE=null;
