@@ -1294,7 +1294,7 @@ function renderHome(){
       <div class="setlbl"><b style="color:var(--bad)">Clear all data</b><span>Wipes both profiles, local + cloud. For removing test data.</span></div>
       <div class="setbtns"><button id="clrBtn" class="mini danger">🗑 Clear</button></div>
     </div>
-    <div class="buildtag">build 0712.2232</div>
+    <div class="buildtag">build 0712.2234</div>
   </div></main>`;
   app.innerHTML=html;
   app.querySelectorAll('.progcard').forEach(c=>{
@@ -1373,17 +1373,9 @@ function renderLog(){
   };
   $('#donebtn').onclick=()=>{
     S.done=!S.done;
-    if(S.done){
-      S.gw=1;                                        // general warm-up counts as done too
-      S.entries.forEach(en=>{                        // day ✓ = check every filled set, mark each exercise done
-        if(hasData(en.sets)||hasData(en.wsets)){
-          en._auto=false; en.done=true;
-          const ckAll=arr=>(arr||[]).forEach(s=>{ if(str(s.kg)!==''||str(s.reps)!=='') s.ck=1; });
-          ckAll(en.sets); ckAll(en.wsets); ckAll(en.xsets);
-          finishExercise(en);
-        }
-      });
-    }
+    if(S.done) S.entries.forEach(en=>{ // day ✓ only confirms numbers & trims extras — no auto-checking
+      if(hasData(en.sets)||hasData(en.wsets)){ en._auto=false; finishExercise(en); }
+    });
     commit(); renderLog();
   };
 }
