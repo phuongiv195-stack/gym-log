@@ -376,6 +376,46 @@ input.auto{color:var(--mut2)} /* suggested (untouched) numbers look pale until c
 .cue .ct{font-size:12.5px; color:#5a5c4e; margin-top:3px; line-height:1.5}
 .cue a{color:var(--olive-dk); font-weight:700; text-decoration:none; font-size:12px}
 
+
+/* ---- Readability polish: darker secondary text, sections that pop ---- */
+:root{--mut:#5c5e4a; --mut2:#82836d; --line:#c9c5b0}
+.card,.mcard,.chartbox,.progcard,.ksec,.gwarm,.slog li{box-shadow:0 1px 6px rgba(26,28,22,.10)}
+.card{border-color:#cdc9b6}
+.tgt{color:#474939}
+.maxline{color:#474939}
+.maxline.hist{color:#5c5e4a}
+.scap{margin-top:16px; padding:7px 11px; background:rgba(91,106,61,.12); border-bottom:none;
+  border-left:3px solid var(--olive); border-radius:7px; color:var(--olive-dk)}
+.scap b{color:var(--olive-dk)}
+.shint{color:#54563e}
+.shint b{color:#a1770f}
+.shint.techline{color:#7a5c10}
+.sheet-h h2{display:inline-block; border-bottom:3px solid var(--gold); padding-bottom:3px}
+.hero h2{display:inline-block; border-bottom:3px solid var(--gold); padding-bottom:3px}
+.ksec summary{border-left:4px solid var(--olive)}
+.exnotes summary{color:#3f4a2a}
+.exnotes div{color:#3d3f33}
+.slab{color:#6d6e5a}
+.fld .u{color:#82836d}
+.callegend{color:#54563e}
+.foot{color:#63644f}
+.foot b{color:#2b2e24}
+.slog .sd .meta{color:#5c5e4a}
+.setpill{color:#2b2e24}
+.setpill.wu{color:#63644f}
+.progtbl td{color:#3d3f33}
+.cue .ct{color:#44463a}
+.ksec .kc{color:#3a3c30}
+.gwrow{color:#3a3c30}
+.mhint{color:#5c5e4a}
+.day .dl{color:#8f9078}
+.restinfo{color:#5c5e4a}
+.sheet-h .foc{color:#6d6e5a}
+.hero p{color:#5c5e4a}
+.progcard .meta{color:#54563e}
+.progcard .meta.goal{color:#44463a}
+.ghead{color:#5c5e4a; border-bottom-color:#b9b5a0}
+
 /* ---- Phone sizing: bigger text & touch targets (also stops iOS focus-zoom: inputs >=16px) ---- */
 @media (max-width:520px){
   .tabs button{font-size:15px}
