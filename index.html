@@ -638,18 +638,18 @@ function effTargetRir(e){
   if(!nums) return null;
   return nums.map(parseFloat).reduce((a,b)=>a+b,0)/nums.length;
 }
+/* Max = the user's 10-rep max (one simple question for every exercise).
+   Convert 10RM -> e1RM -> this week's load for (rep range top + target RIR). */
 function workTarget(e){
   const em=effMaxOf(e); if(!em) return null;
-  const m=em.val;
+  const m=em.val;                                   // 10RM guess
   const mt=String(e.reps||'').match(/(\d+)(?!.*\d)/); // top of the rep range
   const rt=mt?parseInt(mt[1]):null;
-  const rir=effTargetRir(e);
-  if(!rt||rir==null||rir<=0) return m;
-  const e1=m*(1+rt/30);
-  let v=round25(e1/(1+(rt+rir)/30));
-  // 2.5kg rounding must never land back ON the max when reps are meant to be left in the tank
-  if(v>=m){ v=round25(m-2.5); if(v<=0) v=m; }
-  return v;
+  if(!rt) return m;
+  const rir=effTargetRir(e)||0;
+  const e1=m*(1+10/30);
+  const v=round25(e1/(1+(rt+rir)/30));
+  return v>0?v:m;
 }
 
 /* ---- RIR chips: one concept everywhere — how many reps you keep ---- */
@@ -1297,8 +1297,7 @@ function renderList(){
           <h3 class="exlink" title="View history">${esc(e.name)} <span class="hico">📈</span></h3>
           <div class="tgt">${esc(e.reps)} reps · ${effChip(e)} · ${esc(e.rest||'—')} between sets</div>
           ${lastLine}
-          <div class="maxline">Max <input class="maxin" inputmode="decimal" placeholder="?" value="${workVal!=null?workVal:''}"><span class="mu">kg</span>${em&&em.auto?` <span class="estl" title="From your last RIR-0 session (${em.date})">auto</span>`:''}
-            <span class="arrw">→</span> Today <input class="maxin todayin" inputmode="decimal" placeholder="?" value="${(topKg(entry.sets)!=null?topKg(entry.sets):(plan&&plan.kg?plan.kg:''))}"><span class="mu">kg</span> × <b>${plan&&plan.reps[0]!=null?plan.reps[0]:(bottomReps(e.reps)||'—')}</b> reps${plan&&plan.mode==='up'?` <span class="estl up">↑ +2.5kg</span>`:''}${plan&&plan.mode==='repeat'?` <span class="estl">deload — repeat</span>`:''}</div>
+          <div class="maxline">${prev?'':`<span title="Guess: the heaviest weight you could lift about 10 times. Asked only until your first logged session.">Max <input class="maxin" inputmode="decimal" placeholder="?" value="${workVal!=null?workVal:''}"><span class="mu">kg</span> / 10 reps</span> <span class="arrw">→</span> `}Today <input class="maxin todayin" inputmode="decimal" placeholder="?" value="${(topKg(entry.sets)!=null?topKg(entry.sets):(plan&&plan.kg?plan.kg:''))}"><span class="mu">kg</span> × <b>${plan&&plan.reps[0]!=null?plan.reps[0]:(bottomReps(e.reps)||'—')}</b> reps${plan&&plan.mode==='up'?` <span class="estl up">↑ +2.5kg</span>`:''}${plan&&plan.mode==='repeat'?` <span class="estl">deload — repeat</span>`:''}</div>
         </div>
         <button class="exdonebtn ${entry.done?'on':''}" title="Mark exercise done">✓</button>
       </div>
@@ -1688,28 +1687,21 @@ function renderLearn(){
       <h4>How to choose your weight</h4>
       These programs prescribe <b>effort</b> (RPE or RIR), not kg. Pick a load that lands you at the target for the given rep range.
       Too easy → add weight next set/session. Hit the top of the rep range at the target effort → add a little weight (~2.5%).
-      <h4>The "Max … kg / reps" field on each exercise</h4>
-      <b>Max 30 kg / 8–10 reps = the heaviest weight you can lift for that rep range</b> — at 30 kg you reach failure around rep 8–10.
-      That is your <b>working weight</b>: the app fills your S sets with it, and warm-ups are percentages of it (e.g. 50% → 15 kg, 70% → 20 kg).
+      <h4>The "Max … kg / 10 reps" box (first time on an exercise only)</h4>
+      One simple question, the same for every exercise: <b>what's the heaviest weight you could lift about 10 times?</b>
+      Guess it — don't test it. From that the app computes today's load for the week's rep range and RIR target, plus warm-up percentages.
       <br><br>
-      The app scales the pre-filled weight to the week's target:
+      Example — Max 15 kg / 10 reps, exercise is 8–10 reps:
       <table class="cheat">
-        <tr><th>Week says</th><th>With Max 30 kg / 8–10 reps</th></tr>
-        <tr><td>RIR 0 🔥</td><td>exactly <b>30 kg</b> — go to the last rep you can</td></tr>
-        <tr><td>RIR 1–2</td><td>≈ <b>28–29 kg</b> — full reps with 1–2 left in you</td></tr>
-        <tr><td>RIR 3–4</td><td>≈ <b>26–27 kg</b> — comfortable, room to spare</td></tr>
+        <tr><th>Week says</th><th>Today's pre-fill</th></tr>
+        <tr><td>RIR 3–4 (easy weeks)</td><td>≈ <b>12.5 kg</b> — room to spare</td></tr>
+        <tr><td>RIR 1–2</td><td>≈ <b>13.5–14 kg</b></td></tr>
+        <tr><td>RIR 0 🔥</td><td>≈ <b>15 kg</b> — all out</td></tr>
       </table>
-      Why lighter on easy weeks? If 30 kg is where you <i>fail</i> at rep 8–10, then stopping 4 reps early with 30 kg would only give you ~5 reps — below the range. Less weight keeps you in the rep range at the right effort.
-      <h4>Don't know your Max yet? Find it Jeff's way (no 1RM test)</h4>
-      From the guidebook: <i>"This doesn't mean your 1 rep max strength, but rather your strength within the rep ranges given in the program."</i>
-      First time on an exercise: start with a weight you're <b>sure</b> you can lift for the rep range. Do a set. Way too easy → add 10–20% and try again next set.
-      When you find the weight where the last rep of the range feels close to your limit — that's your Max. Type it in.
-      The first 1–2 weeks of every program are intentionally easy so you can dial this in without wrecking yourself.
-      <b>Self-check:</b> can't reach the bottom of the rep range at the target RIR → the weight is a notch too heavy.
-      Beat the top of the range with reps still in reserve → add ~2.5 kg next session (that's progression — the gold chip will light up).
+      Guessed wrong? No problem — the first weeks are intentionally easy; just edit Today (or the set rows) and the app learns from what you actually lift.
+      <b>The box disappears once the exercise has a logged session</b> — from then on your own history drives everything (Jeff's way: <i>"...your strength within the rep ranges given in the program"</i>, weeks 1–2 are for finding weights).
       <br><br>
-      Priority of anchors for the pre-filled numbers: <b>what you typed today → last session's top set → this Max field</b>.
-      So after your first logged session, your own history drives the numbers.
+      Priority of anchors for the pre-filled numbers: <b>what you typed today → last session's top set → the Max guess</b>.
       <h4>Progressive overload — Jeff's "double progression" rule</h4>
       <b>Reps first, weight second.</b> From the guidebook: add a rep to at least one set each week.
       Only once you hit the <b>top of the rep range on ALL working sets</b> do you add weight (smallest step — 2.5 kg or one machine pin), then drop back to the bottom of the range and climb again.
