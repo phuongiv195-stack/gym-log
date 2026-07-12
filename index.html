@@ -204,6 +204,7 @@ input.auto{color:var(--mut2)} /* suggested (untouched) numbers look pale until c
   padding:4px 6px; font-family:var(--mono); font-weight:700; font-size:12.5px; color:var(--ink); text-align:center}
 .maxline .maxin:focus{outline:none; border-color:var(--olive); background:#fff}
 .maxline .mu{margin-left:-2px}
+.maxline .arrw{color:var(--mut2); font-weight:700; margin:0 2px}
 .maxline .sg{color:#5a5c4e}
 .maxline .sg b{font-family:var(--mono); color:var(--gold-dk)}
 .maxline .estl{font-size:9.5px; letter-spacing:.8px; text-transform:uppercase; font-weight:700; color:var(--good);
@@ -1293,7 +1294,8 @@ function renderList(){
           <h3 class="exlink" title="View history">${esc(e.name)} <span class="hico">📈</span></h3>
           <div class="tgt">${esc(e.reps)} reps · ${effChip(e)} · ${esc(e.rest||'—')} between sets</div>
           ${lastLine}
-          <div class="maxline">Today <input class="maxin todayin" inputmode="decimal" placeholder="?" value="${(topKg(entry.sets)!=null?topKg(entry.sets):(plan&&plan.kg?plan.kg:''))}"><span class="mu">kg</span> × <b>${plan&&plan.reps[0]!=null?plan.reps[0]:(bottomReps(e.reps)||'—')}</b> reps${plan&&plan.mode==='up'?` <span class="estl up">↑ +2.5kg</span>`:''}${plan&&plan.mode==='repeat'?` <span class="estl">deload — repeat</span>`:''}</div>
+          <div class="maxline">Max <input class="maxin" inputmode="decimal" placeholder="?" value="${workVal!=null?workVal:''}"><span class="mu">kg</span>${em&&em.auto?` <span class="estl" title="From your last RIR-0 session (${em.date})">auto</span>`:''}
+            <span class="arrw">→</span> Today <input class="maxin todayin" inputmode="decimal" placeholder="?" value="${(topKg(entry.sets)!=null?topKg(entry.sets):(plan&&plan.kg?plan.kg:''))}"><span class="mu">kg</span> × <b>${plan&&plan.reps[0]!=null?plan.reps[0]:(bottomReps(e.reps)||'—')}</b> reps${plan&&plan.mode==='up'?` <span class="estl up">↑ +2.5kg</span>`:''}${plan&&plan.mode==='repeat'?` <span class="estl">deload — repeat</span>`:''}</div>
         </div>
         <button class="exdonebtn ${entry.done?'on':''}" title="Mark exercise done">✓</button>
       </div>
@@ -1338,12 +1340,20 @@ function renderList(){
       };
     });
     card.querySelector('.addset').onclick=()=>{ touch(); entry.sets.push({kg:'',reps:''}); commit(); renderList(); };
+    // Max box: capability anchor (RIR-0 weight for the rep range) — reseeds untouched suggestions
+    const mxa=card.querySelector('.maxin:not(.todayin)');
+    if(mxa) mxa.onchange=()=>{
+      setWork(e.name, mxa.value);
+      const sv=getSaved(curDate);
+      S=buildSession(curDate,week,dayId,(sv&&sv.dayId===dayId)?sv.entries:null,S.done,S.gw);
+      renderList();
+    };
+    // Today box: literally today's working weight — applies to this session only, never rescaled
     const mx=card.querySelector('.todayin');
     if(mx) mx.onchange=()=>{
       const v=parseFloat(mx.value);
       if(isNaN(v)||v<=0) return;
       touch();                                   // this is a real decision — numbers become live
-      setWork(e.name, v);                        // remember as this exercise's anchor
       entry.sets.forEach(s=>{ s.kg=String(v); });          // today's working weight
       const n=entry.wsets.length;
       entry.wsets.forEach((s,si)=>{ const p=(WU_PYRAMID[n]||[])[si];
