@@ -766,7 +766,7 @@ let pid=null;               // current program id
 let week=1, dayId='D1', curDate=todayStr();
 let S=null;                 // in-memory session
 let openSet=new Set();      // temporarily expanded done-exercises
-let histTab='sessions', histEx=null, histAuto=false; // histAuto: exercise was auto-picked, don't filter the session log
+let histEx=null; // exercise selected in History
 
 const K=(...parts)=>['g2',activeP.id,...parts].join(':');
 const SKEY=date=>K(pid,'session',date);
@@ -1165,7 +1165,7 @@ function renderList(){
       <div class="sets">${setsHtml}<button class="addset">+ Add set</button></div>`;
     const touch=()=>{ if(entry._auto){ entry._auto=false;
       card.querySelectorAll('input.auto').forEach(i=>i.classList.remove('auto')); } };
-    card.querySelector('.exlink').onclick=()=>{ histEx=e.name; histAuto=false; histTab='progress'; switchView('history'); };
+    card.querySelector('.exlink').onclick=()=>{ histEx=e.name; switchView('history'); };
     card.querySelectorAll('.srow').forEach(row=>{
       const si=+row.dataset.si;
       const isWu=row.dataset.wu==='1';
@@ -1257,56 +1257,44 @@ function renderRemind(){
   $('#rX').onclick=()=>{ store.set('g2:remind-hide',Date.now()+3*86400000); renderRemind(); };
 }
 
-/* ================= RENDER: HISTORY ================= */
+/* ================= RENDER: HISTORY =================
+   Exercise-centric only: pick an exercise -> chart + its full W/S log.
+   (Day-level review = just pick the date on the Log tab.) */
 function renderHistory(){
   if(!pid){ switchView('home'); return; }
-  const app=$('#app');
-  app.innerHTML=`<main>
-    <div class="subtabs">
-      <button id="subS" class="${histTab==='sessions'?'on':''}">Session log</button>
-      <button id="subP" class="${histTab==='progress'?'on':''}">Exercise progress</button>
-    </div>
-    <div id="histBody"></div>
-  </main>`;
-  $('#subS').onclick=()=>{ histTab='sessions'; renderHistory(); };
-  $('#subP').onclick=()=>{ histTab='progress'; renderHistory(); };
-  histTab==='sessions'?renderSessionLog():renderProgress();
+  $('#app').innerHTML=`<main><div id="histBody"></div></main>`;
+  renderProgress();
 }
-function renderSessionLog(){
+function renderProgress(){
   const body=$('#histBody');
-  if(histEx&&!histAuto){ renderExerciseLog(body); return; }   // an exercise was explicitly chosen -> show only it
-  const sess=listSessions();
-  if(!sess.length){ body.innerHTML=`<div class="empty">No sessions in <b>${esc(PROGRAMS[pid].short)}</b> yet.<br>Log a workout and it will show up here.</div>`; return; }
-  let html='<ul class="slog">';
-  sess.forEach(s=>{
-    const nm=(PROGRAMS[pid].dayNames||{})[s.dayId]||s.dayId;
-    html+=`<li data-date="${s.date}">
-      <div class="ck">${s.done?'✓':''}</div>
-      <div class="sd"><div class="dt">${fmtShort(s.date)} · ${esc(nm)}</div>
-        <div class="meta">${fmtLong(s.date).split(',')[0]} · Week ${s.week}</div></div>
-      <div class="vol"><div class="n">${Math.round(sessionVolume(s)).toLocaleString()}</div><div class="l">kg volume</div></div>
-    </li>`;
-  });
-  body.innerHTML=html+'</ul>';
-  body.querySelectorAll('.slog li').forEach(li=>{
-    li.onclick=()=>{ loadSessionFor(li.dataset.date); switchView('log'); };
-  });
-}
-/* one exercise's history: newest -> oldest, the full W1/W2/S1/S2 log per date */
-function renderExerciseLog(body){
+  const sessAsc=listSessions().slice().reverse();
+  const names=[];
+  sessAsc.forEach(s=>s.entries.forEach(e=>{ if(topSet(e.sets)&&!names.includes(e.exName)) names.push(e.exName); }));
+  names.sort((a,b)=>a.localeCompare(b));
+  if(!names.length&&!histEx){ body.innerHTML='<div class="empty">No exercise data yet.<br>Log some sets — or tap an exercise name 📈 on the Log tab.</div>'; return; }
+  if(!histEx) histEx=names[0];
+  const showNames=names.includes(histEx)?names:[histEx,...names]; // keep the tapped exercise even with no data yet
+  let html='<div class="expick">'+showNames.map(n=>`<button data-ex="${esc(n)}" class="${n===histEx?'on':''}">${esc(n)}</button>`).join('')+'</div>';
+  // chart
+  const pts=[];
+  sessAsc.forEach(s=>{ const e=s.entries.find(x=>x.exName===histEx); if(e){ const t=topSet(e.sets); if(t) pts.push({date:s.date,kg:t.kg,reps:t.reps}); } });
+  html+=`<div class="chartbox"><h3>${esc(histEx)}</h3>`;
+  if(pts.length){
+    const d=+(pts[pts.length-1].kg-pts[0].kg).toFixed(2);
+    html+=`<div class="csub">Top-set kg over time · ${pts.length} session${pts.length>1?'s':''}${pts.length>1?` · ${d>0?'+':''}${d} kg overall`:''}</div>`+lineChart(pts);
+  } else html+='<div class="csub">No sessions logged for this exercise yet — it will chart here once you do.</div>';
+  html+='</div>';
+  // full W1/W2/S1/S2 log per date, newest first
   const hasAny=t=>str(t.kg)!==''||str(t.reps)!=='';
   const rows=[];
-  listSessions().forEach(s=>{ // already newest first
+  listSessions().forEach(s=>{
     const e=s.entries.find(x=>x.exName===histEx);
     if(e&&((e.sets||[]).some(hasAny)||(e.wsets||[]).some(hasAny))) rows.push({s,e});
   });
-  let html=`<div class="exfilter"><span>${esc(histEx)}</span></div>`;
-  if(!rows.length){
-    html+='<div class="empty">No sets logged for this exercise yet.</div>';
-  } else {
+  if(rows.length){
     html+='<ul class="slog">';
     rows.forEach(({s,e})=>{
-      const line=(arr,pfx)=>arr.filter(hasAny).map((t,i)=>
+      const line=(arr,pfx)=>arr.filter(hasAny).map(t=>
         `<span class="setpill${pfx==='W'?' wu':''}">${pfx}${arr.indexOf(t)+1} · ${str(t.kg)||'—'}kg × ${str(t.reps)||'—'}${t.ck?' ✓':''}</span>`).join('');
       const wLine=(e.wsets||[]).some(hasAny)?`<div class="setline">${line(e.wsets,'W')}</div>`:'';
       const sLine=(e.sets||[]).some(hasAny)?`<div class="setline">${line(e.sets,'S')}</div>`:'';
@@ -1321,35 +1309,10 @@ function renderExerciseLog(body){
     html+='</ul>';
   }
   body.innerHTML=html;
+  body.querySelectorAll('.expick button').forEach(b=>{ b.onclick=()=>{ histEx=b.dataset.ex; renderProgress(); }; });
   body.querySelectorAll('.slog li').forEach(li=>{
     li.onclick=()=>{ loadSessionFor(li.dataset.date); switchView('log'); };
   });
-}
-function renderProgress(){
-  const body=$('#histBody');
-  const sess=listSessions().slice().reverse();
-  const names=[];
-  sess.forEach(s=>s.entries.forEach(e=>{ if(topSet(e.sets)&&!names.includes(e.exName)) names.push(e.exName); }));
-  names.sort((a,b)=>a.localeCompare(b));
-  if(!names.length&&!histEx){ body.innerHTML='<div class="empty">No exercise data yet.<br>Log some sets to see progress charts.</div>'; return; }
-  if(!histEx){ histEx=names[0]; histAuto=true; }
-  const showNames=names.includes(histEx)?names:[histEx,...names]; // keep the tapped exercise even with no data yet
-  let html='<div class="expick">'+showNames.map(n=>`<button data-ex="${esc(n)}" class="${n===histEx?'on':''}">${esc(n)}</button>`).join('')+'</div>';
-  const pts=[];
-  sess.forEach(s=>{ const e=s.entries.find(x=>x.exName===histEx); if(e){ const t=topSet(e.sets); if(t) pts.push({date:s.date,kg:t.kg,reps:t.reps}); } });
-  html+=`<div class="chartbox"><h3>${esc(histEx)}</h3>`;
-  if(pts.length){
-    const d=+(pts[pts.length-1].kg-pts[0].kg).toFixed(2);
-    html+=`<div class="csub">Top-set kg over time · ${pts.length} session${pts.length>1?'s':''}${pts.length>1?` · ${d>0?'+':''}${d} kg overall`:''}</div>`+lineChart(pts);
-  } else html+='<div class="csub">No sessions logged for this exercise yet — it will chart here once you do.</div>';
-  html+='</div><table class="progtbl"><tr><th>Date</th><th>Top set</th><th>Volume</th></tr>';
-  pts.slice().reverse().forEach(p=>{
-    const s=sess.find(x=>x.date===p.date), e=s.entries.find(x=>x.exName===histEx);
-    let vol=0; e.sets.forEach(x=>{const k=parseFloat(x.kg),r=parseFloat(x.reps); if(!isNaN(k)&&!isNaN(r)) vol+=k*r;});
-    html+=`<tr><td>${fmtShort(p.date)}</td><td class="n">${p.kg}kg × ${esc(p.reps||'—')}</td><td>${Math.round(vol).toLocaleString()} kg</td></tr>`;
-  });
-  body.innerHTML=html+'</table>';
-  body.querySelectorAll('.expick button').forEach(b=>{ b.onclick=()=>{ histEx=b.dataset.ex; histAuto=false; renderProgress(); }; });
 }
 function lineChart(points,unit){
   unit=unit||'kg';
@@ -1629,7 +1592,7 @@ function wireBackup(){
 
 /* ================= NAV ================= */
 function switchView(v){
-  if(v!=='history'&&view==='history'){ histEx=null; histAuto=false; } // leaving History resets the exercise filter
+  if(v!=='history'&&view==='history') histEx=null; // leaving History resets the selection
   view=v;
   document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
   if(v==='home') renderHome();
