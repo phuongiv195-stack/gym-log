@@ -143,6 +143,9 @@ main{background:var(--paper); color:var(--ink); border-radius:20px 20px 0 0; pad
   padding:8px 12px; border-radius:11px; cursor:pointer; flex:0 0 auto}
 .donebtn.on{background:var(--olive); color:#fff}
 .restinfo{margin:0 2px 12px; font-size:11.5px; color:var(--mut); text-align:center; letter-spacing:.5px; text-transform:uppercase}
+.restinfo.nextup{color:var(--good); background:rgba(79,138,77,.10); border:1px solid rgba(79,138,77,.35);
+  border-radius:11px; padding:9px 12px; text-transform:none; letter-spacing:.2px}
+.restinfo.nextup b{color:var(--olive-dk)}
 /* general warm-up block */
 .gwarm{border:1px dashed var(--line); border-radius:13px; margin:0 2px 12px; background:var(--paper2); overflow:hidden}
 .gwarm summary{list-style:none; cursor:pointer; padding:11px 14px; display:flex; align-items:center; justify-content:space-between; gap:10px}
@@ -826,11 +829,27 @@ function commit(){
   if(pruned.length||S.done||S.gw) store.set(SKEY(S.date), JSON.stringify({date:S.date, program:pid, week:S.week, dayId:S.dayId, done:S.done, gw:S.gw?1:0, entries:pruned}));
   else store.remove(SKEY(S.date));
 }
+/* the workout that comes AFTER the most recent logged session before `date` */
+function nextSlot(date){
+  const last=listSessions().find(s=>s.date<date); // newest first
+  if(!last) return null;
+  const ids=dayList(pid,last.week).map(d=>d.id);
+  const i=ids.indexOf(last.dayId);
+  if(i<0) return null;
+  const P=PROGRAMS[pid];
+  if(i+1<ids.length) return {week:last.week, dayId:ids[i+1]};
+  const nw=Math.min(P.weeks,last.week+1);               // finished the week -> roll to next
+  return {week:nw, dayId:dayList(pid,nw)[0].id};
+}
 function loadSessionFor(date){
   curDate=date;
   const sv=getSaved(date);
   if(sv){ week=sv.week; dayId=sv.dayId; S=buildSession(date,sv.week,sv.dayId,sv.entries,sv.done,sv.gw); }
-  else S=buildSession(date,week,dayId,null,false,0);
+  else {
+    const nx=nextSlot(date);                             // auto-advance to the next workout
+    if(nx){ week=nx.week; dayId=nx.dayId; store.set(K(pid,'pos','w'),week); store.set(K(pid,'pos','d'),dayId); }
+    S=buildSession(date,week,dayId,null,false,0);
+  }
   openSet=new Set();
 }
 function prevTopSet(name,date){
@@ -1004,6 +1023,9 @@ function renderLog(){
       <button class="donebtn ${S.done?'on':''}" id="donebtn">${S.done?'✓ Done':'Mark done'}</button>
     </div>
     ${meta.restAfter?`<div class="restinfo">After this day: ${esc(meta.restAfter)} rest day${meta.restAfter==='1'?'':'s'}</div>`:''}
+    ${S.done?(()=>{ const ds=dayList(pid,week); const i=ds.findIndex(d=>d.id===dayId);
+      const nxt=i+1<ds.length?ds[i+1].name:('Week '+Math.min(PROGRAMS[pid].weeks,week+1)+' · '+dayList(pid,Math.min(PROGRAMS[pid].weeks,week+1))[0].name);
+      return `<div class="restinfo nextup">✓ Session done — next up: <b>${esc(nxt)}</b> (opens automatically on your next training day)</div>`; })():''}
     <details class="gwarm ${S.gw?'on':''}">
       <summary><span>${S.gw?'✓ General warm-up done':'🔥 General warm-up — do this first, every session (5–10 min)'}</span>
         <a class="gv" href="https://youtu.be/tFpwBr_7KPg" target="_blank" rel="noopener">▶ Video</a>
@@ -1196,8 +1218,13 @@ function renderList(){
   });
 }
 function changeDay(id){
-  dayId=id; store.set(K(pid,'pos','d'),id);
   const sv=getSaved(curDate);
+  // don't silently wipe a logged/done session by switching the day on the same date
+  if(sv&&sv.dayId!==id&&(sv.done||(sv.entries||[]).length)){
+    const nm=(dayList(pid,week).find(d=>d.id===sv.dayId)||{}).name||sv.dayId;
+    if(!confirm('This date already has "'+nm+'" logged.\nSwitch the day and discard that log?\n(To see the next workout, just change the date instead.)')) return;
+  }
+  dayId=id; store.set(K(pid,'pos','d'),id);
   const same=sv&&sv.dayId===id;
   S=buildSession(curDate,week,id,same?sv.entries:null,same?sv.done:false,S.gw); // warm-up done survives day switch
   commit(); renderLog();
