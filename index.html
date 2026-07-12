@@ -1263,7 +1263,7 @@ function renderLog(){
     <div class="days" id="days"></div>
     <div id="remindSlot"></div>
     <div class="sheet-h">
-      <div><h2>${esc(meta.title)}</h2><div class="foc">${esc(meta.focus||'')}</div></div>
+      <div><h2>${esc(meta.title)}</h2><div class="foc">${esc(meta.focus||'')} · ${S.entries.length} exercises</div></div>
       <button class="donebtn ${S.done?'on':''}" id="donebtn">${S.done?'✓ Done':'Mark done'}</button>
     </div>
     ${meta.restAfter?`<div class="restinfo">After this day: ${esc(meta.restAfter)} rest day${meta.restAfter==='1'?'':'s'}</div>`:''}
@@ -1407,7 +1407,7 @@ function renderList(){
       <div class="ctop">
         <div class="idx">${ei+1}</div>
         <div class="nm">
-          <h3 class="exlink" title="View history">${esc(e.name)} <span class="hico">📈</span></h3>
+          <h3 class="exlink" title="View history">${esc(e.name)}</h3>
           ${lastLine}
           ${prev?'':`<div class="maxline" title="Guess: the heaviest weight you could lift about 10 times. Asked only until your first logged session.">Max <input class="maxin" inputmode="decimal" placeholder="?" value="${workVal!=null?workVal:''}"><span class="mu">kg</span> / 10 reps</div>`}
           <div class="maxline">Today <input class="maxin todayin" inputmode="decimal" placeholder="?" value="${(topKg(entry.sets)!=null?topKg(entry.sets):(plan&&plan.kg?plan.kg:''))}"><span class="mu">kg</span> × <b>${plan&&plan.reps[0]!=null?plan.reps[0]:(bottomReps(e.reps)||'—')}</b> reps${plan&&plan.mode==='up'?` <span class="estl up">↑ +2.5kg</span>`:''}${plan&&plan.mode==='repeat'?` <span class="estl">deload — repeat</span>`:''}</div>
