@@ -1139,7 +1139,9 @@ function nextSlot(date){
   const nw=Math.min(P.weeks,last.week+1);               // finished the week -> roll to next
   return {week:nw, dayId:dayList(pid,nw)[0].id};
 }
+let loadedAsToday=false; // the visible session was opened as "today"
 function loadSessionFor(date){
+  loadedAsToday=(date===todayStr());
   curDate=date;
   const sv=getSaved(date);
   if(sv){ week=sv.week; dayId=sv.dayId; S=buildSession(date,sv.week,sv.dayId,sv.entries,sv.done,sv.gw); }
@@ -1292,7 +1294,7 @@ function renderHome(){
       <div class="setlbl"><b style="color:var(--bad)">Clear all data</b><span>Wipes both profiles, local + cloud. For removing test data.</span></div>
       <div class="setbtns"><button id="clrBtn" class="mini danger">🗑 Clear</button></div>
     </div>
-    <div class="buildtag">build 0712.2221</div>
+    <div class="buildtag">build 0712.2227</div>
   </div></main>`;
   app.innerHTML=html;
   app.querySelectorAll('.progcard').forEach(c=>{
@@ -1371,9 +1373,17 @@ function renderLog(){
   };
   $('#donebtn').onclick=()=>{
     S.done=!S.done;
-    if(S.done) S.entries.forEach(en=>{ // day ✓ confirms pre-filled numbers, trims untouched extras
-      if(hasData(en.sets)||hasData(en.wsets)){ en._auto=false; finishExercise(en); }
-    });
+    if(S.done){
+      S.gw=1;                                        // general warm-up counts as done too
+      S.entries.forEach(en=>{                        // day ✓ = check every filled set, mark each exercise done
+        if(hasData(en.sets)||hasData(en.wsets)){
+          en._auto=false; en.done=true;
+          const ckAll=arr=>(arr||[]).forEach(s=>{ if(str(s.kg)!==''||str(s.reps)!=='') s.ck=1; });
+          ckAll(en.sets); ckAll(en.wsets); ckAll(en.xsets);
+          finishExercise(en);
+        }
+      });
+    }
     commit(); renderLog();
   };
 }
@@ -2050,6 +2060,14 @@ document.querySelectorAll('.tabs button').forEach(b=>{
 });
 $('#pchip').onclick=()=>{ activeP=null; renderGate(); };
 $('#cloudChip').onclick=cloudSetup;
+// resumed from background on a NEW day -> jump to today's (next) workout
+if(document.addEventListener) document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState!=='visible') return;
+  if(activeP&&pid&&view==='log'&&loadedAsToday&&curDate!==todayStr()){
+    loadSessionFor(todayStr());
+    renderLog();
+  }
+});
 
 /* ================= BOOT ================= */
 (function boot(){
