@@ -646,7 +646,10 @@ function workTarget(e){
   const rir=effTargetRir(e);
   if(!rt||rir==null||rir<=0) return m;
   const e1=m*(1+rt/30);
-  return round25(e1/(1+(rt+rir)/30));
+  let v=round25(e1/(1+(rt+rir)/30));
+  // 2.5kg rounding must never land back ON the max when reps are meant to be left in the tank
+  if(v>=m){ v=round25(m-2.5); if(v<=0) v=m; }
+  return v;
 }
 
 /* ---- RIR chips: one concept everywhere — how many reps you keep ---- */
