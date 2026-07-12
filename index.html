@@ -298,12 +298,6 @@ input.auto{color:var(--mut2)} /* suggested (untouched) numbers look pale until c
 .callegend{display:flex; gap:14px; justify-content:center; margin-top:12px; font-size:11px; color:var(--mut)}
 .callegend .lg{display:inline-block; width:11px; height:11px; border-radius:3px; background:var(--paper2); border:1px solid var(--line); vertical-align:-1px; margin-right:4px}
 .callegend .lg.train{background:#fff; border-color:var(--olive-lt)}
-.pvweek{display:grid; grid-template-columns:repeat(7,1fr); gap:4px}
-.pvday{background:var(--paper); border:1px solid var(--line); border-radius:8px; padding:6px 3px; text-align:center}
-.pvday b{display:block; font-size:9.5px; letter-spacing:.5px; text-transform:uppercase; color:var(--mut2)}
-.pvday span{font-family:var(--disp); font-size:10px; font-weight:600; color:var(--mut); line-height:1.1; display:block; margin-top:2px}
-.pvday.on{background:#fff; border-color:var(--olive-lt)}
-.pvday.on span{color:var(--olive-dk)}
 /* ---- Measure ---- */
 .unittog{display:flex; gap:0; flex:0 0 auto; align-self:flex-end; border:1px solid var(--line); border-radius:10px; overflow:hidden}
 .unittog button{border:none; background:#fff; color:var(--mut); padding:11px 10px; font-size:11px; font-weight:700; cursor:pointer}
@@ -804,79 +798,6 @@ function dayMeta(pid, week, dayId){
     block:null, restAfter:day.restAfter};
 }
 
-/* ================= SCHEDULE (training calendar) =================
-   Per profile+program: a start date + which weekdays you train.
-   The whole program is laid out sequentially onto those weekdays. */
-/* Jeff's required rest AFTER a given workout (min days). From the data where extracted,
-   plus the 365-family pattern from the PDF (REST DAY after Lower and after Legs). */
-const REST_FALLBACK={jn365:{D2:'1',D5:'1-2'}, btsia:{D2:'1',D5:'1-2'}};
-function restMinAfter(dayId){
-  const P=PROGRAMS[pid];
-  let r=null;
-  if(P.days){ const d=P.days.find(x=>x.id===dayId); r=d&&d.restAfter; }
-  else if(P.plan){ for(const b of P.plan){ const d=b.days.find(x=>x.id===dayId); if(d&&d.restAfter){ r=d.restAfter; break; } } }
-  if(r==null&&REST_FALLBACK[pid]) r=REST_FALLBACK[pid][dayId];
-  if(r==null) return 0;
-  const m=String(r).match(/\d+/);
-  return m?+m[0]:0;
-}
-/* one program week laid onto Mon..Sun exactly as Jeff structures it:
-   sessions in order, inserting his rest days. Returns weekday offsets (0=Mon) or null if it can't fit. */
-function weekPattern(){
-  const days=dayList(pid,1);
-  let slots=[], cur=0;
-  for(let i=0;i<days.length;i++){
-    if(cur>6) return null;                       // doesn't fit one week (e.g. 8-workout rotation)
-    slots.push(cur);
-    cur+=1+restMinAfter(days[i].id);
-  }
-  // no rest data & few sessions: spread them (4x -> Mon Tue Thu Fri) instead of bunching Mon-Thu
-  if(days.length===4&&slots.join()==='0,1,2,3') return [0,1,3,4];
-  return slots;
-}
-const snapMonday=s=>{ const d=parseDate(s); const off=(d.getDay()+6)%7; if(off) d.setDate(d.getDate()+(7-off)); return iso(d); };
-function getSched(){ const r=store.get(K(pid,'sched')); if(r){try{return JSON.parse(r)}catch(e){}} return null; }
-function setSched(sc){ if(sc) store.set(K(pid,'sched'),JSON.stringify(sc)); else store.remove(K(pid,'sched')); }
-function schedList(){
-  const sc=getSched(); if(!sc||!sc.start) return null;
-  const P=PROGRAMS[pid];
-  const start=snapMonday(sc.start);              // weeks run Monday -> Sunday
-  const map={};
-  const pat=weekPattern();
-  let endMs=parseDate(start).getTime();
-  if(pat){                                       // Jeff's weekly layout, week-aligned
-    let total=0;
-    for(let w=1;w<=P.weeks;w++){
-      const days=dayList(pid,w);
-      const mon=parseDate(start); mon.setDate(mon.getDate()+(w-1)*7);
-      days.forEach((d,i)=>{
-        const dt=new Date(mon); dt.setDate(dt.getDate()+(pat[i]!=null?pat[i]:i));
-        map[iso(dt)]={week:w, dayId:d.id, name:d.name, idx:total++};
-        if(dt.getTime()>endMs) endMs=dt.getTime();
-      });
-    }
-    return {map, start, end:iso(new Date(endMs)), total};
-  }
-  // rotation programs (more workouts than weekdays): sequential Mon-Sat fill with rest rules
-  const seq=[];
-  for(let w=1;w<=P.weeks;w++) dayList(pid,w).forEach(d=>seq.push({week:w,dayId:d.id,name:d.name}));
-  let d=parseDate(start), i=0, guard=0, lastMs=null, needRest=0;
-  while(i<seq.length&&guard<4000){
-    if(d.getDay()!==0){                          // Sundays off
-      const gap=lastMs==null?Infinity:Math.round((d.getTime()-lastMs)/86400000);
-      if(gap>=1+needRest){
-        map[iso(d)]=Object.assign({idx:i},seq[i]);
-        lastMs=d.getTime(); endMs=d.getTime();
-        needRest=restMinAfter(seq[i].dayId);
-        i++;
-      }
-    }
-    d.setDate(d.getDate()+1); guard++;
-  }
-  return {map, start, end:iso(new Date(endMs)), total:seq.length};
-}
-function schedFor(date){ const s=schedList(); return s?(s.map[date]||null):null; }
-
 /* ================= PROFILES ================= */
 function getProfiles(){
   const r=store.get('g2:profiles');
@@ -1052,7 +973,7 @@ function loadSessionFor(date){
   const sv=getSaved(date);
   if(sv){ week=sv.week; dayId=sv.dayId; S=buildSession(date,sv.week,sv.dayId,sv.entries,sv.done,sv.gw); }
   else {
-    const nx=schedFor(date)||nextSlot(date);             // calendar schedule first, else auto-advance
+    const nx=nextSlot(date);                             // auto-advance to the next workout
     if(nx){ week=nx.week; dayId=nx.dayId; store.set(K(pid,'pos','w'),week); store.set(K(pid,'pos','d'),dayId); }
     S=buildSession(date,week,dayId,null,false,0);
   }
@@ -1561,93 +1482,51 @@ function lineChart(points,unit){
     ${dots}${xlabels}</svg>`;
 }
 
-/* ================= RENDER: CALENDAR ================= */
+/* ================= RENDER: CALENDAR (training history) ================= */
 let calMonth=null; // Date anchored at the 1st of the displayed month
 function renderCalendar(){
   if(!pid){ switchView('home'); return; }
   const app=$('#app');
-  const sc=getSched();
-  if(!sc){ renderCalSetup(app); return; }
-  const sl=schedList();
   if(!calMonth){ const t=new Date(); calMonth=new Date(t.getFullYear(),t.getMonth(),1); }
   const y=calMonth.getFullYear(), m=calMonth.getMonth();
   const first=new Date(y,m,1);
   const offset=(first.getDay()+6)%7;          // week starts Monday
   const today=todayStr();
-  let cells='';
+  let cells='', count=0, doneCount=0;
   for(let i=0;i<42;i++){
     const d=new Date(y,m,1-offset+i);
     const ds=iso(d);
     const inMonth=d.getMonth()===m;
-    const w=sl.map[ds];
-    const sv=store.get(SKEY(ds));
-    let st='';
-    if(sv){ try{ const j=JSON.parse(sv); st=j.done?'done':'logged'; }catch(e){} }
-    cells+=`<div class="cc ${inMonth?'':'dim'} ${ds===today?'today':''} ${w?'train':''} ${st}" data-d="${ds}">
+    let s=null;
+    const raw=store.get(SKEY(ds));
+    if(raw){ try{ s=JSON.parse(raw); }catch(e){} }
+    const trained=s&&((s.entries||[]).length||s.done);
+    if(trained&&inMonth){ count++; if(s.done) doneCount++; }
+    const nm=trained?((PROGRAMS[pid].dayNames||{})[s.dayId]||(dayList(pid,s.week).find(x=>x.id===s.dayId)||{}).name||s.dayId):'';
+    cells+=`<div class="cc ${inMonth?'':'dim'} ${ds===today?'today':''} ${trained?'train':''} ${s&&s.done?'done':(trained?'logged':'')}" data-d="${ds}">
       <div class="cd">${d.getDate()}</div>
-      ${w?`<div class="cw">${esc(w.name)}</div><div class="ck2">${st==='done'?'✓':(st==='logged'?'•':'W'+w.week)}</div>`:''}
+      ${trained?`<div class="cw">${esc(nm)}</div><div class="ck2">${s.done?'✓':'•'}</div>`:''}
     </div>`;
   }
   app.innerHTML=`<main>
     <div class="calhead">
       <button class="wk-btn" id="cPrev">‹</button>
       <div class="calttl"><div class="w">${MON[m]} ${y}</div>
-        <span class="badge">${esc(PROGRAMS[pid].short)} · ${fmtShort(sl.start)} → ${fmtShort(sl.end)}</span></div>
+        <span class="badge">${esc(PROGRAMS[pid].short)} · ${count} session${count===1?'':'s'} · ${doneCount} done</span></div>
       <button class="wk-btn" id="cNext">›</button>
     </div>
     <div class="calgrid caldow">${['Mo','Tu','We','Th','Fr','Sa','Su'].map(d=>`<div>${d}</div>`).join('')}</div>
     <div class="calgrid" id="calBody">${cells}</div>
     <div class="callegend">
-      <span><i class="lg train"></i> training day</span><span><i class="lg"></i> rest</span>
-      <span>✓ done</span><span>• logged</span>
-    </div>
-    <div class="backup" style="margin-top:14px">
-      <button id="cEdit">⚙ Edit schedule</button>
+      <span><i class="lg train"></i> trained</span><span>✓ done</span><span>• logged</span><span><i class="lg"></i> rest</span>
     </div>
   </main>`;
   $('#cPrev').onclick=()=>{ calMonth=new Date(y,m-1,1); renderCalendar(); };
   $('#cNext').onclick=()=>{ calMonth=new Date(y,m+1,1); renderCalendar(); };
-  $('#cEdit').onclick=()=>renderCalSetup(app,sc);
-  app.querySelectorAll('.cc.train').forEach(c=>{
+  app.querySelectorAll('.cc').forEach(c=>{
+    if(c.classList&&String(c.className).includes('dim')) return;
     c.onclick=()=>{ loadSessionFor(c.dataset.d); switchView('log'); };
   });
-}
-function renderCalSetup(app, cur){
-  const P=PROGRAMS[pid];
-  // preview of one week exactly as Jeff lays it out
-  const pat=weekPattern();
-  const WD=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-  let preview='';
-  if(pat){
-    const days=dayList(pid,1);
-    const slots={};
-    days.forEach((d,i)=>{ slots[pat[i]]=d.name; });
-    preview=WD.map((w,i)=>`<div class="pvday ${slots[i]?'on':''}"><b>${w}</b><span>${slots[i]?esc(slots[i]):'rest'}</span></div>`).join('');
-  } else {
-    preview=`<div class="mhint">${P.daysPerWeek}-workout rotation — sessions run Mon–Sat in order (Sundays off), with Jeff's rest rules applied.</div>`;
-  }
-  app.innerHTML=`<main>
-    <div class="hero"><h2>Training calendar</h2>
-      <p>${esc(P.name)} — pick your start week; the app lays out all ${P.weeks} weeks exactly as Jeff structures them. Weeks start on Monday.</p></div>
-    <div class="mcard">
-      <div class="datefld"><label>Start date (snaps to that week's Monday)</label>
-        <input type="date" id="scStart" value="${(cur&&cur.start)||todayStr()}"></div>
-      <label style="display:block;margin:14px 0 6px;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--mut);font-weight:700">Your week will look like</label>
-      ${pat?`<div class="pvweek">${preview}</div>`:preview}
-      <div class="backup" style="margin-top:14px">
-        <button id="scGo">✓ Create schedule</button>
-        ${cur?'<button id="scDel" style="background:transparent;color:var(--bad);border-color:var(--bad)">Remove</button>':''}
-      </div>
-    </div>
-  </main>`;
-  $('#scGo').onclick=()=>{
-    const start=$('#scStart').value||todayStr();
-    setSched({start:snapMonday(start)});
-    calMonth=null;
-    renderCalendar();
-  };
-  const del=$('#scDel');
-  if(del) del.onclick=()=>{ if(confirm('Remove this schedule?')){ setSched(null); renderCalendar(); } };
 }
 
 /* ================= RENDER: MEASURE (body weight & measurements) =================
@@ -1671,37 +1550,44 @@ function listBody(){
   return store.keys(pfx).map(k=>{ try{ return {date:k.slice(pfx.length), ...JSON.parse(store.get(k))}; }catch(e){ return null; } })
     .filter(Boolean).sort((a,b)=>a.date<b.date?-1:1); // oldest -> newest
 }
-let measDate=todayStr(), measMetric='w';
+let measDate=todayStr(), measMetric='waist';
 function renderMeasure(){
   const app=$('#app');
   const b=getBody(measDate);
+  const entries=listBody();
+  // --- body-weight chart (always on top) ---
+  const wpts=entries.map(e=>e.w==null?null:{date:e.date, kg:+toDisp(e.w,false)}).filter(Boolean);
+  let wchart=`<div class="chartbox"><h3>Body weight</h3>`;
+  if(wpts.length){
+    const d=+(wpts[wpts.length-1].kg-wpts[0].kg).toFixed(1);
+    wchart+=`<div class="csub">${wpts.length} entr${wpts.length>1?'ies':'y'}${wpts.length>1?` · ${d>0?'+':''}${d} ${WU_LBL()} overall`:''}</div>`+lineChart(wpts,WU_LBL());
+  } else wchart+='<div class="csub">No entries yet — type your weight above and it will chart here.</div>';
+  wchart+='</div>';
+  let wtable='';
+  if(wpts.length){
+    wtable='<table class="progtbl"><tr><th>Date</th><th>Weight</th><th>Change</th></tr>';
+    wpts.slice().reverse().slice(0,10).forEach((p,i,arr)=>{
+      const prevP=arr[i+1];
+      const d=prevP?+(p.kg-prevP.kg).toFixed(1):null;
+      wtable+=`<tr><td>${fmtShort(p.date)}</td><td class="n">${p.kg} ${WU_LBL()}</td><td>${d==null?'—':(d>0?'+':'')+d+' '+WU_LBL()}</td></tr>`;
+    });
+    wtable+='</table>';
+  }
+  // --- measurements (collapsed) ---
   const fieldRows=BODY_FIELDS.map(([k,lbl])=>`
     <div class="mfld"><label>${lbl}</label>
       <div class="fld"><input inputmode="decimal" placeholder="—" data-mf="${k}" value="${toDisp(b.m[k],true)}"><span class="u">${LN_LBL()}</span></div>
     </div>`).join('');
-  // chart data for selected metric
-  const entries=listBody();
-  const isLen=measMetric!=='w';
-  const pts=entries.map(e=>{ const v=measMetric==='w'?e.w:(e.m||{})[measMetric];
-    return v==null?null:{date:e.date, kg:+toDisp(v,isLen)}; }).filter(Boolean);
-  const mLbl=measMetric==='w'?'Body weight':BODY_FIELDS.find(f=>f[0]===measMetric)[1];
-  const unit=isLen?LN_LBL():WU_LBL();
-  let chart=`<div class="chartbox"><h3>${mLbl}</h3>`;
-  if(pts.length){
-    const d=+(pts[pts.length-1].kg-pts[0].kg).toFixed(1);
-    chart+=`<div class="csub">${pts.length} entr${pts.length>1?'ies':'y'}${pts.length>1?` · ${d>0?'+':''}${d} ${unit} overall`:''}</div>`+lineChart(pts,unit);
-  } else chart+='<div class="csub">No entries yet — type a value above and it will chart here.</div>';
-  chart+='</div>';
-  let table='';
-  if(pts.length){
-    table='<table class="progtbl"><tr><th>Date</th><th>'+mLbl+'</th><th>Change</th></tr>';
-    pts.slice().reverse().forEach((p,i,arr)=>{
-      const prevP=arr[i+1];
-      const d=prevP?+(p.kg-prevP.kg).toFixed(1):null;
-      table+=`<tr><td>${fmtShort(p.date)}</td><td class="n">${p.kg} ${unit}</td><td>${d==null?'—':(d>0?'+':'')+d+' '+unit}</td></tr>`;
-    });
-    table+='</table>';
-  }
+  if(measMetric==='w') measMetric='waist';
+  const mpts=entries.map(e=>{ const v=(e.m||{})[measMetric];
+    return v==null?null:{date:e.date, kg:+toDisp(v,true)}; }).filter(Boolean);
+  const mLbl=(BODY_FIELDS.find(f=>f[0]===measMetric)||['','?'])[1];
+  let mchart=`<div class="chartbox"><h3>${mLbl}</h3>`;
+  if(mpts.length){
+    const d=+(mpts[mpts.length-1].kg-mpts[0].kg).toFixed(1);
+    mchart+=`<div class="csub">${mpts.length} entr${mpts.length>1?'ies':'y'}${mpts.length>1?` · ${d>0?'+':''}${d} ${LN_LBL()} overall`:''}</div>`+lineChart(mpts,LN_LBL());
+  } else mchart+='<div class="csub">No entries for this measurement yet.</div>';
+  mchart+='</div>';
   app.innerHTML=`<main>
     <div class="controls">
       <div class="datefld"><label>Measurement date</label><input type="date" id="mDate" value="${measDate}"></div>
@@ -1712,11 +1598,17 @@ function renderMeasure(){
       <div class="mweight"><label>Body weight</label>
         <div class="fld big"><input inputmode="decimal" placeholder="0" id="mW" value="${toDisp(b.w,false)}"><span class="u">${WU_LBL()}</span></div>
       </div>
-      <div class="mgrid">${fieldRows}</div>
-      <div class="mhint">Weigh in the morning — after the bathroom, before eating. Judge by the <b>weekly trend</b>, not daily swings (±1 kg of water is normal). Same data across all programs.</div>
+      <div class="mhint">Weigh in the morning — after the bathroom, before eating. Judge by the <b>weekly trend</b>, not daily swings.</div>
     </div>
-    <div class="expick">${[['w','Body weight'],...BODY_FIELDS].map(([k,l])=>`<button data-m="${k}" class="${k===measMetric?'on':''}">${l}</button>`).join('')}</div>
-    ${chart}${table}
+    ${wchart}${wtable}
+    <details class="ksec" style="margin-top:14px">
+      <summary><h3>📏 Body measurements (neck, chest, waist…)</h3><span class="pm">+</span></summary>
+      <div class="kc">
+        <div class="mgrid">${fieldRows}</div>
+        <div class="expick" style="margin-top:14px">${BODY_FIELDS.map(([k,l])=>`<button data-m="${k}" class="${k===measMetric?'on':''}">${l}</button>`).join('')}</div>
+        ${mchart}
+      </div>
+    </details>
   </main>`;
   const persist=()=>{
     const nb={w:fromDisp($('#mW').value,false), m:{}};
