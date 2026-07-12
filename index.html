@@ -488,6 +488,44 @@ input.auto{color:var(--mut2)} /* suggested (untouched) numbers look pale until c
   .cchip{font-size:12px}
   .progtbl th,.progtbl td{font-size:14px}
 }
+
+/* ---- Settings rows ---- */
+.setcard{margin-top:0}
+.setrow{display:flex; align-items:center; gap:14px; padding:12px 2px; border-bottom:1px dashed var(--line)}
+.setrow:last-child{border-bottom:none}
+.setlbl{flex:1; min-width:0}
+.setlbl b{font-size:14px; color:var(--ink)}
+.setlbl span{display:block; font-size:12px; color:var(--mut); margin-top:2px; line-height:1.45}
+.stepfld{width:92px; flex:0 0 auto}
+.stepfld input{font-size:17px; text-align:center}
+.setbtns{display:flex; gap:8px; flex:0 0 auto}
+.setbtns .mini{border:1px solid var(--olive); background:var(--olive-dk); color:#fff; border-radius:999px;
+  padding:9px 14px; font-family:var(--disp); font-weight:600; font-size:12.5px; letter-spacing:.4px; text-transform:uppercase; cursor:pointer}
+.setbtns .mini.danger{background:transparent; color:var(--bad); border-color:var(--bad)}
+
+/* ---- Modern facelift: pill tabs, softer geometry, gradient accents ---- */
+.tabs{gap:7px; padding-bottom:10px}
+.tabs button{border:1px solid transparent; border-bottom:none; border-radius:999px; padding:8px 14px 8px}
+.tabs button.on{color:#241f07; background:linear-gradient(135deg,var(--gold),#e6bc55); border-color:var(--gold)}
+main{border-radius:26px 26px 0 0; box-shadow:0 -6px 24px rgba(0,0,0,.25)}
+.card,.progcard,.mcard,.chartbox,.ksec,.gwarm{border-radius:18px}
+.pcard{border-radius:24px}
+.day{border-radius:999px; padding:9px 16px; min-width:auto}
+.day .dl{display:none}
+.day .dn{margin-top:0}
+.fld input{border-radius:12px}
+.donebtn{border-radius:999px}
+.donebtn.on{background:linear-gradient(135deg,var(--olive),#6d7c49); border-color:var(--olive)}
+.backup button{border-radius:999px; background:linear-gradient(135deg,var(--olive-dk),var(--olive))}
+.exdonebtn{border-radius:12px}
+.sck{border-radius:10px}
+.addset{border-radius:12px}
+.expick button{border-radius:999px}
+.subtabs button{border-radius:999px}
+.progcard .tag{background:linear-gradient(135deg,rgba(91,106,61,.16),rgba(216,165,49,.16))}
+.gwck{border-radius:10px}
+.wk-btn{border-radius:999px}
+.pchip,.cchip{border-radius:999px}
 </style>
 </head>
 <body>
@@ -692,7 +730,12 @@ function wuRange(label){ // "1-2" -> [1,2], "2" -> [2,2], "0-1" -> [0,1]
   if(m) return [+m[1],+m[2]];
   const n=parseInt(label); return isNaN(n)?[1,1]:[n,n];
 }
-const round25=x=>Math.round(x/2.5)*2.5;
+function getStep(){
+  try{ const v=parseFloat(store.get(['g2',activeP.id,'step'].join(':')));
+    if(v>0&&v<=20) return v; }catch(e){}
+  return 2.5;
+}
+const round25=x=>{ const s=(activeP?getStep():2.5); return +(Math.round(x/s)*s).toFixed(2); };
 
 /* ---- working weight: the kg you lift for your working sets (S1, S2…) ----
    The user enters it directly — warm-ups are percentages of it. Per profile, shared across programs. */
@@ -973,7 +1016,7 @@ function progressionPlan(e, date, w, nSets){
       const repsArr=prevSets.map(t=>parseInt(t.reps));
       const maxedAll=repsArr.length>0&&repsArr.every(r=>!isNaN(r)&&r>=hi);
       if(maxedAll&&!easy)
-        return {kg:round25(prevKg+2.5), reps:Array.from({length:nSets},()=>lo), mode:'up'};
+        return {kg:round25(prevKg+getStep()), reps:Array.from({length:nSets},()=>lo), mode:'up'};
       let bumped=easy;                                     // no push on deload/intro weeks
       const reps=Array.from({length:nSets},(_,i)=>{
         const valid=repsArr.filter(r=>!isNaN(r));
@@ -1223,10 +1266,21 @@ function renderHome(){
     html+=`<div class="ghead">${esc(g.name)}</div>`;
     ids.forEach(id=>{ html+=cardHtml(id); });
   });
-  html+=`<div class="foot">
-    <div class="backup"><button id="expBtn">⤓ Backup</button><button id="impBtn">⤒ Restore</button>
-    <input type="file" id="impFile" accept="application/json" hidden></div>
-    <div>Backs up <b>both profiles</b> and all programs in one file.</div>
+  html+=`<div class="ghead">⚙ Settings</div>
+  <div class="mcard setcard">
+    <div class="setrow">
+      <div class="setlbl"><b>Weight step (kg)</b><span>How much to add when you max a rep range — and the rounding for every suggestion. Machines with small pins: try 1 or 1.25.</span></div>
+      <div class="fld stepfld"><input id="stepIn" inputmode="decimal" value="${getStep()}"><span class="u">kg</span></div>
+    </div>
+    <div class="setrow">
+      <div class="setlbl"><b>Backup file</b><span>Optional safety net — cloud sync already protects your data.</span></div>
+      <div class="setbtns"><button id="expBtn" class="mini">⤓ Save</button><button id="impBtn" class="mini">⤒ Restore</button>
+      <input type="file" id="impFile" accept="application/json" hidden></div>
+    </div>
+    <div class="setrow">
+      <div class="setlbl"><b style="color:var(--bad)">Clear all data</b><span>Wipes both profiles, local + cloud. For removing test data.</span></div>
+      <div class="setbtns"><button id="clrBtn" class="mini danger">🗑 Clear</button></div>
+    </div>
   </div></main>`;
   app.innerHTML=html;
   app.querySelectorAll('.progcard').forEach(c=>{
@@ -1238,6 +1292,14 @@ function renderHome(){
       if(!ids.includes(dayId)) dayId=ids[0];
       loadSessionFor(todayStr()); switchView('log'); };
   });
+  const st=$('#stepIn');
+  if(st) st.onchange=()=>{
+    const v=parseFloat(st.value);
+    if(!(v>0&&v<=20)){ alert('Enter a step between 0.25 and 20 kg.'); st.value=getStep(); return; }
+    store.set(['g2',activeP.id,'step'].join(':'), String(v));
+    renderHome();
+  };
+  const cb=$('#clrBtn'); if(cb) cb.onclick=clearAllData;
   wireBackup();
 }
 
@@ -1410,7 +1472,7 @@ function renderList(){
           <h3 class="exlink" title="View history">${esc(e.name)}</h3>
           ${lastLine}
           ${prev?'':`<div class="maxline" title="Guess: the heaviest weight you could lift about 10 times. Asked only until your first logged session.">Max <input class="maxin" inputmode="decimal" placeholder="?" value="${workVal!=null?workVal:''}"><span class="mu">kg</span> / 10 reps</div>`}
-          <div class="maxline">Today <input class="maxin todayin" inputmode="decimal" placeholder="?" value="${(topKg(entry.sets)!=null?topKg(entry.sets):(plan&&plan.kg?plan.kg:''))}"><span class="mu">kg</span> × <b>${plan&&plan.reps[0]!=null?plan.reps[0]:(bottomReps(e.reps)||'—')}</b> reps${plan&&plan.mode==='up'?` <span class="estl up">↑ +2.5kg</span>`:''}${plan&&plan.mode==='repeat'?` <span class="estl">deload — repeat</span>`:''}</div>
+          <div class="maxline">Today <input class="maxin todayin" inputmode="decimal" placeholder="?" value="${(topKg(entry.sets)!=null?topKg(entry.sets):(plan&&plan.kg?plan.kg:''))}"><span class="mu">kg</span> × <b>${plan&&plan.reps[0]!=null?plan.reps[0]:(bottomReps(e.reps)||'—')}</b> reps${plan&&plan.mode==='up'?` <span class="estl up">↑ +${getStep()}kg</span>`:''}${plan&&plan.mode==='repeat'?` <span class="estl">deload — repeat</span>`:''}</div>
         </div>
         <button class="exdonebtn ${entry.done?'on':''}" title="Mark exercise done">✓</button>
       </div>
@@ -1520,20 +1582,7 @@ function changeWeek(d){
 
 /* backup reminder */
 function anySessions(){ return store.keys('g2:').some(k=>k.includes(':session:')); }
-function renderRemind(){
-  const slot=$('#remindSlot'); if(!slot) return; slot.innerHTML='';
-  if(!anySessions()) return;
-  const last=+(store.get('g2:lastbackup')||0);
-  const days=last?(Date.now()-last)/86400000:999;
-  if(Date.now()<+(store.get('g2:remind-hide')||0)) return;
-  if(days<7) return;
-  const el=document.createElement('div'); el.className='remind';
-  el.innerHTML=`<span>${last?`It's been <b>${Math.floor(days)} days</b> since your last backup.`:`You've logged data — <b>back up</b> so it can't be lost.`}</span>
-    <button id="rBk">Backup</button><button class="x" id="rX">×</button>`;
-  slot.appendChild(el);
-  $('#rBk').onclick=()=>doExport();
-  $('#rX').onclick=()=>{ store.set('g2:remind-hide',Date.now()+3*86400000); renderRemind(); };
-}
+function renderRemind(){ /* retired — cloud sync keeps data safe */ }
 
 /* ================= RENDER: HISTORY =================
    Exercise-centric only: pick an exercise -> chart + its full W/S log.
@@ -1940,6 +1989,18 @@ function wireBackup(){
     };
     r.readAsText(f);
   };
+}
+
+function clearAllData(){
+  if(!confirm('Delete ALL training data for BOTH profiles - sessions, maxes, measurements, calendar, history? Local AND cloud. This cannot be undone.')) return;
+  if(!confirm('Really sure? Last chance.')) return;
+  const keep=['g2:fbconfig','g2:device'];
+  const doomed=store.keys('g2:').filter(k=>!keep.includes(k));
+  doomed.forEach(k=>store.remove(k));
+  rawStore.keys('jn365:').forEach(k=>rawStore.remove(k));   // legacy tap-365 keys
+  doomed.forEach(k=>{ try{ pushKey(k); }catch(e){} });      // flush deletions to the cloud now
+  alert('All data cleared. The app will restart.');
+  setTimeout(()=>location.reload(), 1200);
 }
 
 /* ================= NAV ================= */
