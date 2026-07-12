@@ -990,7 +990,9 @@ function wuCount(e){ const [,hi]=wuRange(e.wu); return Math.min(4,Math.max(0,hi)
 const bottomReps=r=>{ const m=String(r||'').match(/\d+/); return m?m[0]:''; };
 const repRange=r=>{ const m=String(r||'').match(/(\d+)\s*[–-]\s*(\d+)/); if(m) return [+m[1],+m[2]]; const n=parseInt(r); return isNaN(n)?null:[n,n]; };
 /* full previous entry (all sets) for an exercise before `date` */
+let PREV_OVERRIDE=null; // {exName: {e,week,dayId,date}} — set while re-planning a week flip
 function prevEntryOf(name,date){
+  if(PREV_OVERRIDE&&PREV_OVERRIDE[name]) return PREV_OVERRIDE[name];
   for(const s of listSessions()){
     if(s.date>=date) continue;
     const e=s.entries.find(x=>x.exName===name);
@@ -1100,6 +1102,9 @@ function buildSession(date, w, d, savedEntries, done, gw){
       return {kg:str(s.kg), reps:str(s.reps), ck:s.ck?1:0};
     });
     const entry={exName:e.name, done:!!(sv&&sv.done), sets, wsets, xsets};
+    const pe=prevEntryOf(e.name,date);
+    if(pe){ const tp=topSet(pe.e.sets)||{};
+      entry._prev={date:pe.date, week:pe.week, dayId:pe.dayId, kg:tp.kg, reps:tp.reps}; }
     prefillEntry(entry, e, date, w);
     return entry;
   });
@@ -1393,7 +1398,7 @@ function renderList(){
       card.querySelector('.exsum').onclick=()=>{ openSet.add(ei); renderList(); };
       list.appendChild(card); return;
     }
-    const prev=prevTopSet(e.name,curDate);
+    const prev=(entry._prev&&entry._prev.kg!=null)?entry._prev:prevTopSet(e.name,curDate);
     const em=effMaxOf(e);                       // manual entry or auto (last RIR-0 session)
     const workVal=em?em.val:null;
     const workScaled=workTarget(e);             // scaled down for this week's RIR target
@@ -1573,10 +1578,21 @@ function changeWeek(d){
   const P=PROGRAMS[pid];
   const nw=Math.min(P.weeks,Math.max(1,week+d));
   if(nw===week) return;
+  const confirmed=S.entries.filter(en=>!en._auto&&(hasData(en.sets)||hasData(en.wsets)||en.done));
+  if(confirmed.length&&!confirm('This date has Week '+week+' logged. Move this date to Week '+nw+'? Your logged numbers become the "Last time" baseline and the new week is planned from them.')) return;
   week=nw; store.set(K(pid,'pos','w'),week);
   const ids=dayList(pid,week).map(x=>x.id);
   if(!ids.includes(dayId)){ dayId=ids[0]; store.set(K(pid,'pos','d'),dayId); }
-  S=buildSession(curDate,week,dayId,S.entries.filter(e=>!e._auto),S.done,S.gw); // carry only user-entered data
+  if(confirmed.length){
+    // logged numbers act as the previous session -> the new week progresses from them
+    const ov={};
+    confirmed.forEach(en=>{ ov[en.exName]={e:en, week:week-d, dayId, date:curDate}; });
+    PREV_OVERRIDE=ov;
+    S=buildSession(curDate,week,dayId,null,S.done,S.gw);
+    PREV_OVERRIDE=null;
+  } else {
+    S=buildSession(curDate,week,dayId,S.entries.filter(e=>!e._auto),S.done,S.gw);
+  }
   commit(); renderLog();
 }
 
