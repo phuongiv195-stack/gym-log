@@ -1066,6 +1066,7 @@ function prefillEntry(entry, e, date, w){
   if(entry.done||hasData(entry.sets)||hasData(entry.wsets)) return;
   const plan=progressionPlan(e, date, w, entry.sets.length);
   if(!plan) return;
+  entry._plan=plan;                                        // hints must match what was planned
   if(plan.kg==null){ // no kg anchor yet: still pre-fill the exact rep targets
     entry.sets.forEach((s,i)=>{ s.reps=plan.reps[i]!=null?String(plan.reps[i]):''; s.a=1; });
     entry._auto=true; return;
@@ -1287,7 +1288,7 @@ function renderHome(){
       <div class="setlbl"><b style="color:var(--bad)">Clear all data</b><span>Wipes both profiles, local + cloud. For removing test data.</span></div>
       <div class="setbtns"><button id="clrBtn" class="mini danger">🗑 Clear</button></div>
     </div>
-    <div class="buildtag">build 0712.2206</div>
+    <div class="buildtag">build 0712.2210</div>
   </div></main>`;
   app.innerHTML=html;
   app.querySelectorAll('.progcard').forEach(c=>{
@@ -1404,7 +1405,7 @@ function renderList(){
     const em=effMaxOf(e);                       // manual entry or auto (last RIR-0 session)
     const workVal=em?em.val:null;
     const workScaled=workTarget(e);             // scaled down for this week's RIR target
-    const plan=progressionPlan(e,curDate,week,entry.sets.length); // today's exact kg × reps
+    const plan=entry._plan||progressionPlan(e,curDate,week,entry.sets.length); // today's exact kg × reps (as planned at build)
     const baseKg=topKg(entry.sets)||(prev?prev.kg:null)||workScaled;
     const nWu=entry.wsets.length;
     const [wLo,wHi]=wuRange(e.wu);
