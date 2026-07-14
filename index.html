@@ -135,7 +135,8 @@ main{background:var(--paper); color:var(--ink); border-radius:20px 20px 0 0; pad
 .day.done::after{content:'✓'; float:right; color:var(--good); font-weight:700; font-size:13px; margin-left:6px}
 .day.on.done::after,.day.on.logged::after{color:#dfe6c6}
 
-.sheet-h{display:flex; align-items:center; justify-content:space-between; margin:6px 4px 12px}
+.sheet-h{display:flex; align-items:center; justify-content:space-between; gap:8px; margin:6px 4px 12px}
+.sheet-h>div:first-child{flex:1}
 .sheet-h h2{font-family:var(--disp); text-transform:uppercase; font-size:22px; letter-spacing:.5px; margin:0; color:var(--ink)}
 .sheet-h .foc{font-size:11px; color:var(--mut); letter-spacing:1px; text-transform:uppercase}
 .donebtn{border:1.5px solid var(--olive); background:transparent; color:var(--olive-dk);
@@ -229,6 +230,12 @@ input.auto{color:var(--mut2)} /* suggested (untouched) numbers look pale until c
 .vids a.alt{background:transparent; border:1px dashed var(--line); color:#4a4c40; font-weight:600}
 .vids a.alt svg{fill:var(--mut2)}
 .vids .altlbl{font-size:10px; color:var(--mut2); align-self:center; letter-spacing:.5px; text-transform:uppercase; font-weight:700}
+/* ✓ circle on a video chip = the variant you chose to do today */
+.vids .vpick{width:15px; height:15px; border-radius:50%; border:1.5px solid var(--line); background:#fff;
+  display:inline-flex; align-items:center; justify-content:center; font-size:9px; line-height:1; color:transparent; flex:0 0 auto; cursor:pointer}
+.vids .vpick.on{background:var(--good); border-color:var(--good); color:#fff}
+.vids a.picked{border:1.5px solid var(--good); background:rgba(79,138,77,.08); color:var(--ink)}
+.pickline b{color:var(--good)}
 /* notes */
 .exnotes{margin:6px 14px 0; border:1px dashed var(--line); border-radius:10px; background:var(--paper)}
 .exnotes summary{list-style:none; cursor:pointer; padding:7px 11px; font-size:11px; letter-spacing:.6px;
@@ -249,6 +256,11 @@ input.auto{color:var(--mut2)} /* suggested (untouched) numbers look pale until c
 .fld input:focus{outline:none; border-color:var(--olive); background:#fff}
 .fld .u{position:absolute; right:9px; top:50%; transform:translateY(-50%); font-size:11px; color:var(--mut2); font-weight:600; pointer-events:none}
 .rm{border:none; background:transparent; color:var(--mut2); font-size:20px; cursor:pointer; padding:0}
+.sdel{border:none; background:transparent; color:var(--mut2); font-size:17px; line-height:1; cursor:pointer; padding:0; width:22px; height:28px}
+.sdel:active{color:var(--bad)}
+.tmrbtn{border:1px solid var(--line); background:transparent; border-radius:10px; padding:8px 10px;
+  font-family:var(--mono); font-size:12px; font-weight:700; color:var(--mut); cursor:pointer; white-space:nowrap}
+.tmrbtn.run{border-color:var(--gold-dk); color:var(--gold-dk)}
 .addset{margin-top:9px; width:100%; border:1px dashed var(--line); background:transparent; color:var(--olive-dk);
   border-radius:10px; padding:9px; font-family:var(--disp); font-weight:600; font-size:13px; letter-spacing:.5px; cursor:pointer; text-transform:uppercase}
 .last{margin:6px 14px 0; padding:8px 11px; background:var(--paper2); border-radius:10px;
@@ -859,8 +871,13 @@ function setHint(e, si, total, plan){
   const say=v=>String(v)==='0'?'<b>RIR 0</b> — all out, to failure 🔥':`<b>RIR ${v}</b> — stop with ${v} rep${String(v)==='1'?'':'s'} left`;
   if(f.left!=null){
     // when the program gives one target (365's RPE = last set), early sets go ~1 rep easier
+    // (f.left may be a range string like '0–1' — bump each number, never concatenate)
+    const bump=v=>{ const m=String(v).match(/\d+(?:\.\d+)?/g); if(!m) return v;
+      const b=m.map(n=>+((parseFloat(n)+1).toFixed(1)));
+      const lo=Math.min(...b), hi=Math.max(...b);
+      return lo===hi?String(lo):lo+'–'+hi; };
     const lastV=(f.last!=null?f.last:f.left);
-    const early=(f.last!=null)?f.left:f.left+(total>1?1:0);
+    const early=(f.last!=null)?f.left:(total>1?bump(f.left):f.left);
     if(total<=1) return `${tgt} · ${say(lastV)}`;
     if(!last) return `${tgt} · ${say(early)}`;
     return `${tgt} · last set: ${say(lastV)}`;
@@ -1108,7 +1125,8 @@ function buildSession(date, w, d, savedEntries, done, gw){
       const s=(sv&&sv.xsets&&sv.xsets[si])||{};
       return {kg:str(s.kg), reps:str(s.reps), ck:s.ck?1:0};
     });
-    const entry={exName:e.name, done:!!(sv&&sv.done), sets, wsets, xsets};
+    const entry={exName:e.name, done:!!(sv&&sv.done), sets, wsets, xsets,
+      pick:(sv&&sv.pick!=null)?sv.pick:null}; // which variant you chose to do (0=main, 1/2=subs)
     const pe=prevEntryOf(e.name,date);
     if(pe){ const tp=topSet(pe.e.sets)||{};
       entry._prev={date:pe.date, week:pe.week, dayId:pe.dayId, kg:tp.kg, reps:tp.reps}; }
@@ -1130,13 +1148,13 @@ function commit(){
     }
     previewDay=null; store.set(K(pid,'pos','d'),dayId);
   }
-  const pruned=S.entries.filter(e=>(!e._auto||e.done)&&(hasData(e.sets)||hasData(e.wsets)||hasData(e.xsets)||anyCk(e)||e.done))
-    .map(e=>({exName:e.exName, done:e.done,
+  const pruned=S.entries.filter(e=>(!e._auto||e.done||e.pick!=null)&&(hasData(e.sets)||hasData(e.wsets)||hasData(e.xsets)||anyCk(e)||e.done||e.pick!=null))
+    .map(e=>({exName:e.exName, done:e.done, pick:e.pick!=null?e.pick:undefined,
       sets:e.sets.filter(s=>str(s.kg)!==''||str(s.reps)!==''||s.ck).map(s=>({kg:str(s.kg),reps:str(s.reps),ck:s.ck?1:0,a:s.a?1:0})),
       // keep warm-up/extension slots in place; drop only if all empty
       wsets:(hasData(e.wsets)||e.wsets.some(s=>s.ck))?e.wsets.map(s=>({kg:str(s.kg),reps:str(s.reps),ck:s.ck?1:0})):[],
       xsets:(hasData(e.xsets)||(e.xsets||[]).some(s=>s.ck))?e.xsets.map(s=>({kg:str(s.kg),reps:str(s.reps),ck:s.ck?1:0})):[]}));
-  if(pruned.length||S.done||S.gw) store.set(SKEY(S.date), JSON.stringify({date:S.date, program:pid, week:S.week, dayId:S.dayId, done:S.done, gw:S.gw?1:0, entries:pruned}));
+  if(pruned.length||S.done||S.gw||S.t0) store.set(SKEY(S.date), JSON.stringify({date:S.date, program:pid, week:S.week, dayId:S.dayId, done:S.done, gw:S.gw?1:0, t0:S.t0||0, dur:S.dur||0, entries:pruned}));
   else store.remove(SKEY(S.date));
 }
 /* the workout that comes AFTER the most recent logged session before `date` */
@@ -1158,7 +1176,7 @@ function loadSessionFor(date){
   previewDay=null;
   curDate=date;
   const sv=getSaved(date);
-  if(sv){ week=sv.week; dayId=sv.dayId; S=buildSession(date,sv.week,sv.dayId,sv.entries,sv.done,sv.gw); }
+  if(sv){ week=sv.week; dayId=sv.dayId; S=buildSession(date,sv.week,sv.dayId,sv.entries,sv.done,sv.gw); S.t0=sv.t0||0; S.dur=sv.dur||0; }
   else {
     const nx=nextSlot(date);                             // auto-advance to the next workout
     if(nx){ week=nx.week; dayId=nx.dayId; store.set(K(pid,'pos','w'),week); store.set(K(pid,'pos','d'),dayId); }
@@ -1311,7 +1329,7 @@ function renderHome(){
       <div class="setlbl"><b style="color:var(--bad)">Clear all data</b><span>Wipes both profiles, local + cloud. For removing test data.</span></div>
       <div class="setbtns"><button id="clrBtn" class="mini danger">🗑 Clear</button></div>
     </div>
-    <div class="buildtag">build 0714.1508</div>
+    <div class="buildtag">build 0714.1521</div>
   </div></main>`;
   app.innerHTML=html;
   app.querySelectorAll('.progcard').forEach(c=>{
@@ -1335,6 +1353,9 @@ function renderHome(){
 }
 
 /* ================= RENDER: LOG ================= */
+function fmtDur(s){ s=Math.max(0,Math.round(s)); const h=Math.floor(s/3600), m=Math.floor(s%3600/60), ss=s%60;
+  return (h?h+':'+String(m).padStart(2,'0'):String(m))+':'+String(ss).padStart(2,'0'); }
+let tmrIv=null;
 function renderLog(){
   if(!pid){ switchView('home'); return; }
   const P=PROGRAMS[pid];
@@ -1357,6 +1378,7 @@ function renderLog(){
     <div id="remindSlot"></div>
     <div class="sheet-h">
       <div><h2>${esc(meta.title)}</h2><div class="foc">${[meta.focus,S.entries.length+' exercises'].filter(Boolean).map(esc).join(' · ')}</div></div>
+      <button class="tmrbtn ${S.t0&&!S.dur&&!S.done?'run':''}" id="tmrbtn" title="Session timer">${S.dur?'⏱ '+fmtDur(S.dur):(S.t0&&!S.done?'⏱ '+fmtDur((Date.now()-S.t0)/1000):'⏱ Start')}</button>
       <button class="donebtn ${S.done?'on':''}" id="donebtn">${S.done?'✓ Done':'Mark done'}</button>
     </div>
     ${previewDay?(()=>{ const sv=getSaved(curDate); const nm=sv?(((dayList(pid,sv.week||week).find(d=>d.id===sv.dayId)||{}).name)||sv.dayId):'';
@@ -1364,7 +1386,7 @@ function renderLog(){
     ${meta.restAfter?`<div class="restinfo">After this day: ${esc(meta.restAfter)} rest day${meta.restAfter==='1'?'':'s'}</div>`:''}
     ${S.done?(()=>{ const ds=dayList(pid,week); const i=ds.findIndex(d=>d.id===dayId);
       const nxt=i+1<ds.length?ds[i+1].name:('Week '+Math.min(PROGRAMS[pid].weeks,week+1)+' · '+dayList(pid,Math.min(PROGRAMS[pid].weeks,week+1))[0].name);
-      return `<div class="restinfo nextup">✓ Session done — next up: <b>${esc(nxt)}</b> (opens automatically on your next training day)</div>`; })():''}
+      return `<div class="restinfo nextup">✓ Session done${S.dur?' in <b>'+fmtDur(S.dur)+'</b>':''} — next up: <b>${esc(nxt)}</b> (opens automatically on your next training day)</div>`; })():''}
     <details class="gwarm ${S.gw?'on':''}">
       <summary><span>${S.gw?'✓ General warm-up done':'🔥 General warm-up — do this first, every session (5–10 min)'}</span>
         <a class="gv" href="https://youtu.be/tFpwBr_7KPg" target="_blank" rel="noopener">▶ Video</a>
@@ -1384,6 +1406,18 @@ function renderLog(){
   renderDays(); renderList(); renderRemind();
   $('#dateInp').onchange=e=>{ if(e.target.value){ loadSessionFor(e.target.value); renderLog(); } };
   $('#todayBtn').onclick=()=>{ loadSessionFor(todayStr()); renderLog(); };
+  // session timer: Start -> ticking; tap while running -> stop; tap a finished time -> reset (confirm)
+  if(tmrIv){ clearInterval(tmrIv); tmrIv=null; }
+  $('#tmrbtn').onclick=()=>{
+    if(!S.t0){ S.t0=Date.now(); S.dur=0; commit(); renderLog(); }
+    else if(!S.dur&&!S.done){ S.dur=Math.round((Date.now()-S.t0)/1000); commit(); renderLog(); }
+    else if(confirm('Reset the session timer?')){ S.t0=0; S.dur=0; commit(); renderLog(); }
+  };
+  if(S.t0&&!S.dur&&!S.done){
+    tmrIv=setInterval(()=>{ const el=$('#tmrbtn');
+      if(!el){ clearInterval(tmrIv); tmrIv=null; return; }
+      el.textContent='⏱ '+fmtDur((Date.now()-S.t0)/1000); },1000);
+  }
   $('#wprev').onclick=()=>changeWeek(-1);
   $('#wnext').onclick=()=>changeWeek(1);
   $('#gwckBtn').onclick=ev=>{
@@ -1392,6 +1426,7 @@ function renderLog(){
   };
   $('#donebtn').onclick=()=>{
     S.done=!S.done;
+    if(S.done&&S.t0&&!S.dur) S.dur=Math.round((Date.now()-S.t0)/1000); // done stops the timer
     if(S.done) S.entries.forEach(en=>{ // day ✓ only confirms numbers & trims extras — no auto-checking
       if(hasData(en.sets)||hasData(en.wsets)){ en._auto=false; finishExercise(en); }
     });
@@ -1422,8 +1457,9 @@ function renderList(){
     const card=document.createElement('div'); card.className='card'+(entry.done?' exdone':'');
     if(entry.done && !openSet.has(ei)){
       const t=topSet(entry.sets);
+      const pkd=entry.pick===1?e.sub1:(entry.pick===2?e.sub2:null);
       card.innerHTML=`<div class="exsum"><span class="ck">✓</span>
-        <span class="nm">${esc(e.name)}</span>
+        <span class="nm">${esc(pkd&&pkd.name?pkd.name:e.name)}</span>
         <span class="best">${t?t.kg+'kg × '+(t.reps||'—'):''}</span></div>`;
       card.querySelector('.exsum').onclick=()=>{ openSet.add(ei); renderList(); };
       list.appendChild(card); return;
@@ -1468,7 +1504,7 @@ function renderList(){
         <div class="fld"><input class="${entry._auto?'auto':''}" inputmode="decimal" placeholder="0" data-f="kg" value="${esc(s.kg)}"><span class="u">kg</span></div>
         <div class="fld"><input class="${entry._auto?'auto':''}" inputmode="numeric" placeholder="0" data-f="reps" value="${esc(s.reps)}"><span class="u">reps</span></div>
         <button class="sck ${s.ck?'on':''}" title="Set done">✓</button>
-        <span></span>
+        ${entry.sets.length>1?`<button class="sdel" title="Remove this set">×</button>`:'<span></span>'}
       </div>`;
       // ★ extension rows to track what the technique produced (drops / partial reps / hold seconds)
       if(isLast&&(entry.xsets||[]).length){
@@ -1490,21 +1526,25 @@ function renderList(){
       lastLine=`<div class="maxline hist">Last ${fmtShort(prev.date)}${prevRir!=null?` · <b>RIR ${esc(prevRir)}</b>`:''} · <b>${prev.kg}kg × ${esc(prev.reps||'—')}</b></div>`;
     }
     const play='<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+    // ○ on each chip = "this is the one I'm doing" (main or a substitution); tap the chip itself for the video
+    const pk=i=>`<span class="vpick ${entry.pick===i?'on':''}" data-vp="${i}" title="I'm doing this one">✓</span>`;
     let vids='';
-    if(e.video) vids+=`<a href="${esc(e.video)}" target="_blank" rel="noopener">${play}Video</a>`;
-    const alts=[e.sub1,e.sub2].filter(s=>s&&s.name&&!/^(see notes|n\/a)$/i.test(s.name.trim())); // placeholder subs live in the notes
+    if(e.video) vids+=`<a class="${entry.pick===0?'picked':''}" href="${esc(e.video)}" target="_blank" rel="noopener">${pk(0)}${play}Video</a>`;
+    const alts=[[1,e.sub1],[2,e.sub2]].filter(([i,s])=>s&&s.name&&!/^(see notes|n\/a)$/i.test(s.name.trim())); // placeholder subs live in the notes
     if(alts.length){
       vids+=`<span class="altlbl">or</span>`;
-      alts.forEach(s=>{
-        if(s.video) vids+=`<a class="alt" href="${esc(s.video)}" target="_blank" rel="noopener">${play}${esc(s.name)}</a>`;
-        else vids+=`<a class="alt" style="pointer-events:none">${esc(s.name)}</a>`;
+      alts.forEach(([i,s])=>{
+        if(s.video) vids+=`<a class="alt ${entry.pick===i?'picked':''}" href="${esc(s.video)}" target="_blank" rel="noopener">${pk(i)}${play}${esc(s.name)}</a>`;
+        else vids+=`<a class="alt ${entry.pick===i?'picked':''}">${pk(i)}${esc(s.name)}</a>`;
       });
     }
+    const pickedSub=entry.pick===1?e.sub1:(entry.pick===2?e.sub2:null);
     card.innerHTML=`
       <div class="ctop">
         <div class="idx">${ei+1}</div>
         <div class="nm">
           <h3 class="exlink" title="View history">${esc(e.name)}</h3>
+          ${pickedSub?`<div class="maxline pickline">→ doing: <b>${esc(pickedSub.name)}</b></div>`:''}
           ${lastLine}
           ${prev?'':`<div class="maxline" title="The heaviest weight you have lifted on this exercise. Asked only until your first logged session.">Max <input class="maxin" inputmode="decimal" placeholder="?" value="${workVal!=null?workVal:''}"><span class="mu">kg</span></div>`}
           <div class="maxline">Today <input class="maxin todayin" inputmode="decimal" placeholder="?" value="${(topKg(entry.sets)!=null?topKg(entry.sets):(plan&&plan.kg?plan.kg:''))}"><span class="mu">kg</span> × <b>${plan&&plan.reps[0]!=null?plan.reps[0]:(bottomReps(e.reps)||'—')}</b> reps${plan&&plan.mode==='up'?` <span class="estl up">↑ +${getStep()}kg</span>`:''}${plan&&plan.mode==='repeat'?` <span class="estl">deload — repeat</span>`:''}</div>
@@ -1518,6 +1558,14 @@ function renderList(){
     const touch=()=>{ if(entry._auto){ entry._auto=false;
       card.querySelectorAll('input.auto').forEach(i=>i.classList.remove('auto')); } };
     card.querySelector('.exlink').onclick=()=>{ histEx=e.name; switchView('history'); };
+    card.querySelectorAll('.vpick').forEach(p=>{
+      p.onclick=ev=>{
+        ev.preventDefault(); ev.stopPropagation(); // don't open the video
+        const i=+p.dataset.vp;
+        entry.pick=(entry.pick===i)?null:i;
+        commit(); renderList();
+      };
+    });
     card.querySelectorAll('.srow').forEach(row=>{
       const si=+row.dataset.si;
       const isWu=row.dataset.wu==='1';
@@ -1548,6 +1596,12 @@ function renderList(){
         if(arr[si].ck) delete arr[si].a; // a checked set was really done
         // all working sets checked -> exercise done (collapses)
         if(!isWu && !isX && entry.sets.length && entry.sets.every(s=>s.ck)) { entry.done=true; openSet.delete(ei); finishExercise(entry); }
+        commit(); renderList(); renderDays();
+      };
+      const del=row.querySelector('.sdel');
+      if(del) del.onclick=()=>{
+        touch();
+        entry.sets.splice(si,1);
         commit(); renderList(); renderDays();
       };
     });
@@ -1608,7 +1662,9 @@ function changeDay(id){
   previewDay=null;
   dayId=id; store.set(K(pid,'pos','d'),id);
   const same=sv&&sv.dayId===id;
+  const t0=S.t0||0, dur=S.dur||0;
   S=buildSession(curDate,week,id,same?sv.entries:null,same?sv.done:false,S.gw); // warm-up done survives day switch
+  S.t0=same?(sv.t0||0):t0; S.dur=same?(sv.dur||0):dur;   // the session timer belongs to the date
   commit(); renderLog();
 }
 function changeWeek(d){
@@ -1620,6 +1676,7 @@ function changeWeek(d){
   // baseline = whatever numbers are on screen right now (suggested or logged)
   const shown=S.entries.filter(en=>(en.sets||[]).some(s=>str(s.kg)!==''&&str(s.reps)!==''));
   const oldWeek=week;
+  const t0=S.t0||0, dur=S.dur||0; // timer survives week browsing
   week=nw; store.set(K(pid,'pos','w'),week);
   const ids=dayList(pid,week).map(x=>x.id);
   if(!ids.includes(dayId)){ dayId=ids[0]; store.set(K(pid,'pos','d'),dayId); }
@@ -1632,6 +1689,7 @@ function changeWeek(d){
   } else {
     S=buildSession(curDate,week,dayId,S.entries.filter(e=>!e._auto),S.done,S.gw);
   }
+  S.t0=t0; S.dur=dur;
   commit(); renderLog();
 }
 
