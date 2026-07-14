@@ -1344,7 +1344,7 @@ function renderHome(){
       <div class="setlbl"><b style="color:var(--bad)">Clear all data</b><span>Wipes both profiles, local + cloud. For removing test data.</span></div>
       <div class="setbtns"><button id="clrBtn" class="mini danger">🗑 Clear</button></div>
     </div>
-    <div class="buildtag">build 0714.1935</div>
+    <div class="buildtag">build 0714.1937</div>
   </div></main>`;
   app.innerHTML=html;
   app.querySelectorAll('.progcard').forEach(c=>{
@@ -1688,7 +1688,13 @@ function changeDay(id){
   // that day opens as a preview; only actually logging data there replaces the saved session
   if(sv&&(sv.done||(sv.entries||[]).length)&&(sv.dayId!==id||sv.week!==week)){
     if(sv.dayId===id){ week=sv.week; } // tapped the saved day while browsing another week -> restore it
-    else { previewDay=id; dayId=id; S=buildSession(curDate,week,id,null,false,S.gw); renderLog(); return; }
+    else {
+      // that day was trained on another date this week -> jump straight to that date's log
+      const rec=listSessions().find(s=>s.week===week&&s.dayId===id&&(s.done||(s.entries||[]).length));
+      if(rec){ loadSessionFor(rec.date); renderLog(); return; }
+      // never trained -> non-destructive preview on this date
+      previewDay=id; dayId=id; S=buildSession(curDate,week,id,null,false,S.gw); renderLog(); return;
+    }
   }
   previewDay=null;
   dayId=id; store.set(K(pid,'pos','d'),id);
