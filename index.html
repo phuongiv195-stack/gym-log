@@ -1336,10 +1336,6 @@ function renderHome(){
   html+=`<div class="ghead">⚙ Settings</div>
   <div class="mcard setcard">
     <div class="setrow">
-      <div class="setlbl"><b>Weight step (kg)</b><span>How much to add when you max a rep range — and the rounding for every suggestion. Machines with small pins: try 1 or 1.25.</span></div>
-      <div class="fld stepfld"><input id="stepIn" inputmode="decimal" value="${getStep()}"><span class="u">kg</span></div>
-    </div>
-    <div class="setrow">
       <div class="setlbl"><b>Backup file</b><span>Optional safety net — cloud sync already protects your data.</span></div>
       <div class="setbtns"><button id="expBtn" class="mini">⤓ Save</button><button id="impBtn" class="mini">⤒ Restore</button>
       <input type="file" id="impFile" accept="application/json" hidden></div>
@@ -1348,7 +1344,7 @@ function renderHome(){
       <div class="setlbl"><b style="color:var(--bad)">Clear all data</b><span>Wipes both profiles, local + cloud. For removing test data.</span></div>
       <div class="setbtns"><button id="clrBtn" class="mini danger">🗑 Clear</button></div>
     </div>
-    <div class="buildtag">build 0714.1952</div>
+    <div class="buildtag">build 0714.1954</div>
   </div></main>`;
   app.innerHTML=html;
   app.querySelectorAll('.progcard').forEach(c=>{
@@ -1360,13 +1356,6 @@ function renderHome(){
       if(!ids.includes(dayId)) dayId=ids[0];
       loadSessionFor(todayStr()); switchView('log'); };
   });
-  const st=$('#stepIn');
-  if(st) st.onchange=()=>{
-    const v=parseFloat(st.value);
-    if(!(v>0&&v<=20)){ alert('Enter a step between 0.25 and 20 kg.'); st.value=getStep(); return; }
-    store.set(['g2',activeP.id,'step'].join(':'), String(v));
-    renderHome();
-  };
   const cb=$('#clrBtn'); if(cb) cb.onclick=clearAllData;
   wireBackup();
 }
