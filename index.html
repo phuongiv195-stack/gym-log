@@ -763,11 +763,11 @@ function getStep(){
     if(v>0&&v<=20) return v; }catch(e){}
   return 2.5;
 }
-/* per-exercise weight step — machines jump 5kg, dumbbells 2.5… overrides the global step */
+/* per-exercise weight step — machines jump 5kg, dumbbells 2.5, 0 = bodyweight (no kg, no rounding) */
 const xstepKey=ex=>['g2',activeP.id,'xstep',ex].join(':');
-function exStep(ex){ const v=parseFloat(store.get(xstepKey(ex))); return (v>0&&v<=50)?v:null; }
-const stepOf=ex=>(ex!=null&&exStep(ex))||getStep();
-const round25=(x,ex)=>{ const s=(activeP?stepOf(ex):2.5); return +(Math.round(x/s)*s).toFixed(2); };
+function exStep(ex){ const v=parseFloat(store.get(xstepKey(ex))); return (v>=0&&v<=50)?v:null; }
+const stepOf=ex=>{ if(ex!=null){ const s=exStep(ex); if(s!=null) return s; } return getStep(); };
+const round25=(x,ex)=>{ const s=(activeP?stepOf(ex):2.5); if(!s) return +(+x).toFixed(2); return +(Math.round(x/s)*s).toFixed(2); };
 
 /* ---- working weight: the kg you lift for your working sets (S1, S2…) ----
    The user enters it directly — warm-ups are percentages of it. Per profile, shared across programs. */
@@ -1059,7 +1059,7 @@ function progressionPlan(e, date, w, nSets){
       const prevKg=Math.max(...kgs);
       const repsArr=prevSets.map(t=>parseInt(t.reps));
       const maxedAll=repsArr.length>0&&repsArr.every(r=>!isNaN(r)&&r>=hi);
-      if(maxedAll&&!easy)
+      if(maxedAll&&!easy&&stepOf(e.name)>0) // step 0 = bodyweight: never jump kg / reset reps
         return {kg:round25(prevKg+stepOf(e.name), e.name), reps:Array.from({length:nSets},()=>lo), mode:'up'};
       let bumped=easy;                                     // no push on deload/intro weeks
       const reps=Array.from({length:nSets},(_,i)=>{
@@ -1348,7 +1348,7 @@ function renderHome(){
       <div class="setlbl"><b style="color:var(--bad)">Clear all data</b><span>Wipes both profiles, local + cloud. For removing test data.</span></div>
       <div class="setbtns"><button id="clrBtn" class="mini danger">🗑 Clear</button></div>
     </div>
-    <div class="buildtag">build 0714.1949</div>
+    <div class="buildtag">build 0714.1952</div>
   </div></main>`;
   app.innerHTML=html;
   app.querySelectorAll('.progcard').forEach(c=>{
@@ -1574,7 +1574,7 @@ function renderList(){
           ${lastLine}
           ${prev?'':`<div class="maxline" title="The heaviest weight you have lifted on this exercise. Asked only until your first logged session.">Max <input class="maxin" inputmode="decimal" placeholder="?" value="${workVal!=null?workVal:''}"><span class="mu">kg</span></div>`}
           <div class="maxline">Today <input class="maxin todayin" inputmode="decimal" placeholder="?" value="${(topKg(entry.sets)!=null?topKg(entry.sets):(plan&&plan.kg?plan.kg:''))}"><span class="mu">kg</span> × <b>${plan&&plan.reps[0]!=null?plan.reps[0]:(bottomReps(e.reps)||'—')}</b> reps${plan&&plan.mode==='up'?` <span class="estl up">↑ +${stepOf(e.name)}kg</span>`:''}${plan&&plan.mode==='repeat'?` <span class="estl">deload — repeat</span>`:''}</div>
-          <div class="maxline">Step <input class="maxin stepin" inputmode="decimal" placeholder="${getStep()}" value="${exStep(e.name)!=null?exStep(e.name):''}" title="Weight jump for THIS exercise — machine stack 5, dumbbells 2.5… Warm-ups & progression round to it. Empty = the global step."><span class="mu">kg</span>${exStep(e.name)?'':` <span class="estl">global ${getStep()}kg</span>`}</div>
+          <div class="maxline">Step <input class="maxin stepin" inputmode="decimal" placeholder="?" value="${exStep(e.name)!=null?exStep(e.name):''}" title="Weight jump of THIS machine/implement — stack 5, dumbbells 2.5… 0 = bodyweight (no kg). Warm-ups & progression round to it."><span class="mu">kg</span></div>
         </div>
         <button class="exdonebtn ${entry.done?'on':''}" title="Mark exercise done">✓</button>
       </div>
@@ -1660,8 +1660,9 @@ function renderList(){
     const sp=card.querySelector('.stepin');
     if(sp) sp.onchange=()=>{
       const v=parseFloat(sp.value);
-      if(!sp.value.trim()||isNaN(v)||v<=0||v>50) store.remove(xstepKey(e.name));
-      else store.set(xstepKey(e.name), String(v));
+      if(!sp.value.trim()||isNaN(v)||v<0||v>50) store.remove(xstepKey(e.name));
+      else store.set(xstepKey(e.name), String(v)); // 0 allowed = bodyweight
+
       if(entry._auto){ // untouched suggestions -> re-derive the whole prefill with the new step
         delete entry._plan;
         entry.sets.forEach(s=>{ s.kg=''; s.reps=''; });
