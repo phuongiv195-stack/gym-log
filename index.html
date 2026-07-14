@@ -766,6 +766,10 @@ function getStep(){
 /* per-exercise weight step — machines jump 5kg, dumbbells 2.5, 0 = bodyweight (no kg, no rounding) */
 const xstepKey=ex=>['g2',activeP.id,'xstep',ex].join(':');
 function exStep(ex){ const v=parseFloat(store.get(xstepKey(ex))); return (v>=0&&v<=50)?v:null; }
+/* chosen variant (0=main, 1/2=substitution) — remembered per exercise, forever, like the step */
+const vpickKey=ex=>['g2',activeP.id,'vpick',ex].join(':');
+function pickOf(ex){ const v=parseInt(store.get(vpickKey(ex))); return (v===0||v===1||v===2)?v:null; }
+function setPick(ex,v){ if(v==null) store.remove(vpickKey(ex)); else store.set(vpickKey(ex),String(v)); }
 const stepOf=ex=>{ if(ex!=null){ const s=exStep(ex); if(s!=null) return s; } return getStep(); };
 const round25=(x,ex)=>{ const s=(activeP?stepOf(ex):2.5); if(!s) return +(+x).toFixed(2); return +(Math.round(x/s)*s).toFixed(2); };
 
@@ -1144,8 +1148,7 @@ function buildSession(date, w, d, savedEntries, done, gw){
       const s=(sv&&sv.xsets&&sv.xsets[si])||{};
       return {kg:str(s.kg), reps:str(s.reps), ck:s.ck?1:0};
     });
-    const entry={exName:e.name, done:!!(sv&&sv.done), sets, wsets, xsets,
-      pick:(sv&&sv.pick!=null)?sv.pick:null}; // which variant you chose to do (0=main, 1/2=subs)
+    const entry={exName:e.name, done:!!(sv&&sv.done), sets, wsets, xsets};
     const pe=prevEntryOf(e.name,date);
     if(pe){ const tp=topSet(pe.e.sets)||{};
       entry._prev={date:pe.date, week:pe.week, dayId:pe.dayId, kg:tp.kg, reps:tp.reps}; }
@@ -1167,8 +1170,8 @@ function commit(){
     }
     previewDay=null; store.set(K(pid,'pos','d'),dayId);
   }
-  const pruned=S.entries.filter(e=>(!e._auto||e.done||e.pick!=null)&&(hasData(e.sets)||hasData(e.wsets)||hasData(e.xsets)||anyCk(e)||e.done||e.pick!=null))
-    .map(e=>({exName:e.exName, done:e.done, pick:e.pick!=null?e.pick:undefined,
+  const pruned=S.entries.filter(e=>(!e._auto||e.done)&&(hasData(e.sets)||hasData(e.wsets)||hasData(e.xsets)||anyCk(e)||e.done))
+    .map(e=>({exName:e.exName, done:e.done,
       sets:e.sets.filter(s=>str(s.kg)!==''||str(s.reps)!==''||s.ck).map(s=>({kg:str(s.kg),reps:str(s.reps),ck:s.ck?1:0,a:s.a?1:0})),
       // keep warm-up/extension slots in place; drop only if all empty
       wsets:(hasData(e.wsets)||e.wsets.some(s=>s.ck))?e.wsets.map(s=>({kg:str(s.kg),reps:str(s.reps),ck:s.ck?1:0})):[],
@@ -1344,7 +1347,7 @@ function renderHome(){
       <div class="setlbl"><b style="color:var(--bad)">Clear all data</b><span>Wipes both profiles, local + cloud. For removing test data.</span></div>
       <div class="setbtns"><button id="clrBtn" class="mini danger">🗑 Clear</button></div>
     </div>
-    <div class="buildtag">build 0714.1954</div>
+    <div class="buildtag">build 0714.1957</div>
   </div></main>`;
   app.innerHTML=html;
   app.querySelectorAll('.progcard').forEach(c=>{
@@ -1461,9 +1464,10 @@ function renderList(){
   S.entries.forEach((entry,ei)=>{
     const e=exs[ei]; if(!e) return;
     const card=document.createElement('div'); card.className='card'+(entry.done?' exdone':'');
+    const pick=pickOf(e.name);
     if(entry.done && !openSet.has(ei)){
       const t=topSet(entry.sets);
-      const pkd=entry.pick===1?e.sub1:(entry.pick===2?e.sub2:null);
+      const pkd=pick===1?e.sub1:(pick===2?e.sub2:null);
       card.innerHTML=`<div class="exsum"><span class="ck">✓</span>
         <span class="nm">${esc(pkd&&pkd.name?pkd.name:e.name)}</span>
         <span class="best">${t?t.kg+'kg × '+(t.reps||'—'):''}</span></div>`;
@@ -1472,7 +1476,7 @@ function renderList(){
     }
     if(!entry.done && closedSet.has(ei)){ // manually collapsed — tap to reopen
       const t=topSet(entry.sets);
-      const pkd2=entry.pick===1?e.sub1:(entry.pick===2?e.sub2:null);
+      const pkd2=pick===1?e.sub1:(pick===2?e.sub2:null);
       card.innerHTML=`<div class="exsum"><span class="ck fold">${ei+1}</span>
         <span class="nm fold">${esc(pkd2&&pkd2.name?pkd2.name:e.name)}</span>
         <span class="best">▾</span></div>`;
@@ -1542,18 +1546,18 @@ function renderList(){
     }
     const play='<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
     // ○ on each chip = "this is the one I'm doing" (main or a substitution); tap the chip itself for the video
-    const pk=i=>`<span class="vpick ${entry.pick===i?'on':''}" data-vp="${i}" title="I'm doing this one">✓</span>`;
+    const pk=i=>`<span class="vpick ${pick===i?'on':''}" data-vp="${i}" title="I'm doing this one">✓</span>`;
     let vids='';
-    if(e.video) vids+=`<a class="${entry.pick===0?'picked':''}" href="${esc(e.video)}" target="_blank" rel="noopener">${pk(0)}${play}${esc(e.name)}</a>`;
+    if(e.video) vids+=`<a class="${pick===0?'picked':''}" href="${esc(e.video)}" target="_blank" rel="noopener">${pk(0)}${play}${esc(e.name)}</a>`;
     const alts=[[1,e.sub1],[2,e.sub2]].filter(([i,s])=>s&&s.name&&!/^(see notes|n\/a)$/i.test(s.name.trim())); // placeholder subs live in the notes
     if(alts.length){
       vids+=`<span class="altlbl">or</span>`;
       alts.forEach(([i,s])=>{
-        if(s.video) vids+=`<a class="alt ${entry.pick===i?'picked':''}" href="${esc(s.video)}" target="_blank" rel="noopener">${pk(i)}${play}${esc(s.name)}</a>`;
-        else vids+=`<a class="alt ${entry.pick===i?'picked':''}">${pk(i)}${esc(s.name)}</a>`;
+        if(s.video) vids+=`<a class="alt ${pick===i?'picked':''}" href="${esc(s.video)}" target="_blank" rel="noopener">${pk(i)}${play}${esc(s.name)}</a>`;
+        else vids+=`<a class="alt ${pick===i?'picked':''}">${pk(i)}${esc(s.name)}</a>`;
       });
     }
-    const pickedSub=entry.pick===1?e.sub1:(entry.pick===2?e.sub2:null);
+    const pickedSub=pick===1?e.sub1:(pick===2?e.sub2:null);
     card.innerHTML=`
       <div class="ctop">
         <div class="idx">${ei+1}</div>
@@ -1584,8 +1588,8 @@ function renderList(){
       p.onclick=ev=>{
         ev.preventDefault(); ev.stopPropagation(); // don't open the video
         const i=+p.dataset.vp;
-        entry.pick=(entry.pick===i)?null:i;
-        commit(); renderList();
+        setPick(e.name, pickOf(e.name)===i?null:i); // remembered per exercise, all future sessions
+        renderList();
       };
     });
     card.querySelectorAll('.srow').forEach(row=>{
