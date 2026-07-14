@@ -1344,7 +1344,7 @@ function renderHome(){
       <div class="setlbl"><b style="color:var(--bad)">Clear all data</b><span>Wipes both profiles, local + cloud. For removing test data.</span></div>
       <div class="setbtns"><button id="clrBtn" class="mini danger">🗑 Clear</button></div>
     </div>
-    <div class="buildtag">build 0714.1937</div>
+    <div class="buildtag">build 0714.1943</div>
   </div></main>`;
   app.innerHTML=html;
   app.querySelectorAll('.progcard').forEach(c=>{
@@ -1399,9 +1399,6 @@ function renderLog(){
     ${previewDay?(()=>{ const sv=getSaved(curDate); const nm=sv?(((dayList(pid,sv.week||week).find(d=>d.id===sv.dayId)||{}).name)||sv.dayId):'';
       return `<div class="restinfo">👁 Just looking — "<b>${esc(nm)}</b>" logged on this date stays saved. Enter data here only if you want to replace it.</div>`; })():''}
     ${meta.restAfter?`<div class="restinfo">After this day: ${esc(meta.restAfter)} rest day${meta.restAfter==='1'?'':'s'}</div>`:''}
-    ${S.done?(()=>{ const ds=dayList(pid,week); const i=ds.findIndex(d=>d.id===dayId);
-      const nxt=i+1<ds.length?ds[i+1].name:('Week '+Math.min(PROGRAMS[pid].weeks,week+1)+' · '+dayList(pid,Math.min(PROGRAMS[pid].weeks,week+1))[0].name);
-      return `<div class="restinfo nextup">✓ Session done${S.dur?' in <b>'+fmtDur(S.dur)+'</b>':''} — next up: <b>${esc(nxt)}</b> (opens automatically on your next training day)</div>`; })():''}
     <details class="gwarm ${S.gw?'on':''}">
       <summary><span>${S.gw?'✓ General warm-up done':'🔥 General warm-up — do this first, every session (5–10 min)'}</span>
         <a class="gv" href="https://youtu.be/tFpwBr_7KPg" target="_blank" rel="noopener">▶ Video</a>
