@@ -134,6 +134,8 @@ main{background:var(--paper); color:var(--ink); border-radius:20px 20px 0 0; pad
 .day.logged::after{content:'•'; float:right; color:var(--gold); font-weight:700; font-size:16px; margin-left:6px; line-height:.8}
 .day.done::after{content:'✓'; float:right; color:var(--good); font-weight:700; font-size:13px; margin-left:6px}
 .day.on.done::after,.day.on.logged::after{color:#dfe6c6}
+.day .dt{font-family:var(--mono); font-size:9.5px; font-weight:700; color:var(--mut2); margin-top:2px}
+.day.on .dt{color:#dfe6c6}
 
 .sheet-h{display:flex; align-items:center; justify-content:space-between; gap:8px; margin:6px 4px 12px}
 .sheet-h>div:first-child{flex:1}
@@ -173,6 +175,9 @@ main{background:var(--paper); color:var(--ink); border-radius:20px 20px 0 0; pad
   min-width:26px; height:26px; border-radius:8px; display:grid; place-items:center; margin-top:1px}
 .ctop .nm{flex:1; min-width:0}
 .ctop .nm h3{margin:0; font-size:16.5px; font-weight:600; line-height:1.25; color:var(--ink)}
+/* the history link is ONLY the name text — the rest of the header row folds/unfolds the card */
+.ctop .nm h3.exlink{display:inline; cursor:pointer}
+.ctop{cursor:pointer}
 .exlink{cursor:pointer}
 .exlink .hico{font-size:11px; opacity:.55}
 .exlink:active{color:var(--olive-dk)}
@@ -275,6 +280,9 @@ input.auto{color:var(--mut2)} /* suggested (untouched) numbers look pale until c
 .exsum .ck{color:var(--good); font-weight:700; font-size:15px}
 .exsum .nm{flex:1; font-size:14.5px; font-weight:600; color:#4a4c40; text-decoration:line-through; text-decoration-color:rgba(91,106,61,.4); text-decoration-thickness:1.5px}
 .exsum .best{font-family:var(--mono); font-weight:700; font-size:12.5px; color:var(--olive-dk)}
+.exsum .ck.fold{color:#fff; background:var(--olive); border-radius:8px; width:24px; height:24px;
+  display:inline-flex; align-items:center; justify-content:center; font-family:var(--disp); font-size:13px}
+.exsum .nm.fold{text-decoration:none}
 
 .foot{text-align:center; color:var(--mut); font-size:11px; padding:14px 20px 4px; line-height:1.6}
 .foot b{color:var(--ink)}
@@ -304,6 +312,7 @@ input.auto{color:var(--mut2)} /* suggested (untouched) numbers look pale until c
 .cc .cw{font-family:var(--disp); font-size:10.5px; font-weight:600; color:var(--olive-dk); line-height:1.15; margin-top:2px;
   overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical}
 .cc .ck2{position:absolute; top:3px; right:5px; font-size:10px; font-weight:700; color:var(--mut2)}
+.cc .cdur{font-family:var(--mono); font-size:8.5px; font-weight:700; color:var(--mut2); margin-top:1px}
 .cc.done{background:rgba(79,138,77,.13); border-color:rgba(79,138,77,.55)}
 .cc.done .ck2{color:var(--good); font-size:12px}
 .cc.logged .ck2{color:var(--gold-dk); font-size:14px; line-height:.7}
@@ -997,6 +1006,7 @@ let pid=null;               // current program id
 let week=1, dayId='D1', curDate=todayStr();
 let S=null;                 // in-memory session
 let openSet=new Set();      // temporarily expanded done-exercises
+let closedSet=new Set();    // manually collapsed (not-done) exercises — tap the card header to toggle
 let histEx=null; // exercise selected in History
 
 const K=(...parts)=>['g2',activeP.id,...parts].join(':');
@@ -1182,7 +1192,7 @@ function loadSessionFor(date){
     if(nx){ week=nx.week; dayId=nx.dayId; store.set(K(pid,'pos','w'),week); store.set(K(pid,'pos','d'),dayId); }
     S=buildSession(date,week,dayId,null,false,0);
   }
-  openSet=new Set();
+  openSet=new Set(); closedSet=new Set();
 }
 function prevTopSet(name,date){
   for(const s of listSessions()){
@@ -1329,7 +1339,7 @@ function renderHome(){
       <div class="setlbl"><b style="color:var(--bad)">Clear all data</b><span>Wipes both profiles, local + cloud. For removing test data.</span></div>
       <div class="setbtns"><button id="clrBtn" class="mini danger">🗑 Clear</button></div>
     </div>
-    <div class="buildtag">build 0714.1521</div>
+    <div class="buildtag">build 0714.1931</div>
   </div></main>`;
   app.innerHTML=html;
   app.querySelectorAll('.progcard').forEach(c=>{
@@ -1436,15 +1446,16 @@ function renderLog(){
 function renderDays(){
   const P=PROGRAMS[pid];
   const box=$('#days'); box.innerHTML='';
-  const sv=previewDay?getSaved(curDate):null; // while previewing, keep the saved day's badge visible
+  const sess=listSessions(); // newest first — badge every day of THIS week that was trained (any date)
   dayList(pid,week).forEach(d=>{
     const isCur=d.id===dayId;
-    const saved=sv&&sv.dayId===d.id;
-    const logged=(isCur&&S.entries.some(e=>!e._auto&&(hasData(e.sets)||hasData(e.wsets))))||(saved&&!sv.done&&(sv.entries||[]).length);
-    const done=(isCur&&S.done)||(saved&&sv.done);
+    const rec=sess.find(s=>s.week===week&&s.dayId===d.id&&(s.done||(s.entries||[]).length));
+    const done=(isCur&&S.done)||!!(rec&&rec.done);
+    const logged=!done&&((isCur&&S.entries.some(e=>!e._auto&&(hasData(e.sets)||hasData(e.wsets))))||!!rec);
+    const dur=(isCur&&S.dur)?S.dur:(rec&&rec.dur?rec.dur:0);
     const el=document.createElement('button');
     el.className='day'+(isCur?' on':'')+(done?' done':(logged?' logged':''));
-    el.innerHTML=`<div class="dl">Day ${d.id.slice(1)}</div><div class="dn">${esc(d.name)}</div>`;
+    el.innerHTML=`<div class="dl">Day ${d.id.slice(1)}</div><div class="dn">${esc(d.name)}</div>${dur?`<div class="dt">⏱ ${fmtDur(dur)}</div>`:''}`;
     el.onclick=()=>changeDay(d.id);
     box.appendChild(el);
   });
@@ -1462,6 +1473,15 @@ function renderList(){
         <span class="nm">${esc(pkd&&pkd.name?pkd.name:e.name)}</span>
         <span class="best">${t?t.kg+'kg × '+(t.reps||'—'):''}</span></div>`;
       card.querySelector('.exsum').onclick=()=>{ openSet.add(ei); renderList(); };
+      list.appendChild(card); return;
+    }
+    if(!entry.done && closedSet.has(ei)){ // manually collapsed — tap to reopen
+      const t=topSet(entry.sets);
+      const pkd2=entry.pick===1?e.sub1:(entry.pick===2?e.sub2:null);
+      card.innerHTML=`<div class="exsum"><span class="ck fold">${ei+1}</span>
+        <span class="nm fold">${esc(pkd2&&pkd2.name?pkd2.name:e.name)}</span>
+        <span class="best">▾</span></div>`;
+      card.querySelector('.exsum').onclick=()=>{ closedSet.delete(ei); renderList(); };
       list.appendChild(card); return;
     }
     const prev=(entry._prev&&entry._prev.kg!=null)?entry._prev:prevTopSet(e.name,curDate);
@@ -1557,7 +1577,13 @@ function renderList(){
       <div class="sets">${setsHtml}<button class="addset">+ Add set</button></div>`;
     const touch=()=>{ if(entry._auto){ entry._auto=false;
       card.querySelectorAll('input.auto').forEach(i=>i.classList.remove('auto')); } };
-    card.querySelector('.exlink').onclick=()=>{ histEx=e.name; switchView('history'); };
+    card.querySelector('.exlink').onclick=ev=>{ ev.stopPropagation(); histEx=e.name; switchView('history'); };
+    // tap the header area (outside the name / inputs / buttons) to fold or unfold the exercise
+    card.querySelector('.ctop').onclick=ev=>{
+      if(ev.target.closest('.exlink,.maxline,input,button,a')) return;
+      if(entry.done) openSet.delete(ei); else closedSet.add(ei);
+      renderList();
+    };
     card.querySelectorAll('.vpick').forEach(p=>{
       p.onclick=ev=>{
         ev.preventDefault(); ev.stopPropagation(); // don't open the video
@@ -1651,17 +1677,17 @@ function renderList(){
   });
 }
 function changeDay(id){
+  closedSet=new Set();
   const sv=getSaved(curDate);
   // a logged/done session on this date is never wiped by tapping another day —
   // that day opens as a preview; only actually logging data there replaces the saved session
-  if(sv&&sv.dayId!==id&&(sv.done||(sv.entries||[]).length)){
-    previewDay=id; dayId=id;
-    S=buildSession(curDate,week,id,null,false,S.gw);
-    renderLog(); return;
+  if(sv&&(sv.done||(sv.entries||[]).length)&&(sv.dayId!==id||sv.week!==week)){
+    if(sv.dayId===id){ week=sv.week; } // tapped the saved day while browsing another week -> restore it
+    else { previewDay=id; dayId=id; S=buildSession(curDate,week,id,null,false,S.gw); renderLog(); return; }
   }
   previewDay=null;
   dayId=id; store.set(K(pid,'pos','d'),id);
-  const same=sv&&sv.dayId===id;
+  const same=sv&&sv.dayId===id&&sv.week===week;
   const t0=S.t0||0, dur=S.dur||0;
   S=buildSession(curDate,week,id,same?sv.entries:null,same?sv.done:false,S.gw); // warm-up done survives day switch
   S.t0=same?(sv.t0||0):t0; S.dur=same?(sv.dur||0):dur;   // the session timer belongs to the date
@@ -1671,24 +1697,29 @@ function changeWeek(d){
   const P=PROGRAMS[pid];
   const nw=Math.min(P.weeks,Math.max(1,week+d));
   if(nw===week) return;
-  const real=S.entries.filter(en=>!en._auto&&(hasData(en.sets)||hasData(en.wsets)||en.done));
-  if(real.length&&!confirm('This date has Week '+week+' logged. Plan Week '+nw+' from those numbers (they become the "Last time" baseline)?')) return;
-  // baseline = whatever numbers are on screen right now (suggested or logged)
-  const shown=S.entries.filter(en=>(en.sets||[]).some(s=>str(s.kg)!==''&&str(s.reps)!==''));
-  const oldWeek=week;
+  closedSet=new Set();
+  const sv=getSaved(curDate);
   const t0=S.t0||0, dur=S.dur||0; // timer survives week browsing
-  week=nw; store.set(K(pid,'pos','w'),week);
+  week=nw;
   const ids=dayList(pid,week).map(x=>x.id);
-  if(!ids.includes(dayId)){ dayId=ids[0]; store.set(K(pid,'pos','d'),dayId); }
-  if(d>0&&shown.length){
-    const ov={};
-    shown.forEach(en=>{ ov[en.exName]={e:en, week:oldWeek, dayId, date:curDate}; });
-    PREV_OVERRIDE=ov;
-    S=buildSession(curDate,week,dayId,null,S.done,S.gw);
-    PREV_OVERRIDE=null;
-  } else {
-    S=buildSession(curDate,week,dayId,S.entries.filter(e=>!e._auto),S.done,S.gw);
+  if(!ids.includes(dayId)) dayId=ids[0];
+  if(sv&&(sv.done||(sv.entries||[]).length)){
+    if(sv.week===week&&sv.dayId===dayId){
+      // browsed back to the saved week -> restore the saved log
+      previewDay=null;
+      store.set(K(pid,'pos','w'),week); store.set(K(pid,'pos','d'),dayId);
+      S=buildSession(curDate,week,dayId,sv.entries,sv.done,sv.gw);
+      S.t0=sv.t0||0; S.dur=sv.dur||0;
+    } else {
+      // browsing other weeks on a logged date -> silent preview, saved session untouched
+      previewDay=dayId;
+      S=buildSession(curDate,week,dayId,null,false,S.gw);
+    }
+    renderLog(); return;
   }
+  previewDay=null;
+  store.set(K(pid,'pos','w'),week); store.set(K(pid,'pos','d'),dayId);
+  S=buildSession(curDate,week,dayId,S.entries.filter(e=>!e._auto),S.done,S.gw);
   S.t0=t0; S.dur=dur;
   commit(); renderLog();
 }
@@ -1801,7 +1832,7 @@ function renderCalendar(){
     const nm=trained?((PROGRAMS[pid].dayNames||{})[s.dayId]||(dayList(pid,s.week).find(x=>x.id===s.dayId)||{}).name||s.dayId):'';
     cells+=`<div class="cc ${inMonth?'':'dim'} ${ds===today?'today':''} ${trained?'train':''} ${s&&s.done?'done':(trained?'logged':'')}" data-d="${ds}">
       <div class="cd">${d.getDate()}</div>
-      ${trained?`<div class="cw">${esc(nm)}</div><div class="ck2">${s.done?'✓':'•'}</div>`:''}
+      ${trained?`<div class="cw">${esc(nm)}</div>${s.dur?`<div class="cdur">⏱ ${fmtDur(s.dur)}</div>`:''}<div class="ck2">${s.done?'✓':'•'}</div>`:''}
     </div>`;
   }
   app.innerHTML=`<main>
