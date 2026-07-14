@@ -1119,6 +1119,17 @@ function buildSession(date, w, d, savedEntries, done, gw){
 }
 function commit(){
   const anyCk=e=>e.sets.some(s=>s.ck)||e.wsets.some(s=>s.ck)||(e.xsets||[]).some(s=>s.ck);
+  if(previewDay){
+    // just looking at another workout — the session saved on this date stays untouched
+    const real=S.entries.some(e=>!e._auto&&(hasData(e.sets)||hasData(e.wsets)||hasData(e.xsets)||anyCk(e)||e.done))||S.done;
+    if(!real) return;
+    const sv=getSaved(curDate);
+    const nm=sv?(((dayList(pid,sv.week||week).find(d=>d.id===sv.dayId)||{}).name)||sv.dayId):'';
+    if(!confirm('Log "'+dayMeta(pid,week,dayId).title+'" on this date instead?\nThis replaces the "'+nm+'" session saved here.')){
+      S=buildSession(curDate,week,dayId,null,false,S.gw); renderLog(); return; // declined -> back to a clean preview
+    }
+    previewDay=null; store.set(K(pid,'pos','d'),dayId);
+  }
   const pruned=S.entries.filter(e=>(!e._auto||e.done)&&(hasData(e.sets)||hasData(e.wsets)||hasData(e.xsets)||anyCk(e)||e.done))
     .map(e=>({exName:e.exName, done:e.done,
       sets:e.sets.filter(s=>str(s.kg)!==''||str(s.reps)!==''||s.ck).map(s=>({kg:str(s.kg),reps:str(s.reps),ck:s.ck?1:0,a:s.a?1:0})),
@@ -1141,8 +1152,10 @@ function nextSlot(date){
   return {week:nw, dayId:dayList(pid,nw)[0].id};
 }
 let loadedAsToday=false; // the visible session was opened as "today"
+let previewDay=null;     // viewing a different workout on a date that already has a saved log
 function loadSessionFor(date){
   loadedAsToday=(date===todayStr());
+  previewDay=null;
   curDate=date;
   const sv=getSaved(date);
   if(sv){ week=sv.week; dayId=sv.dayId; S=buildSession(date,sv.week,sv.dayId,sv.entries,sv.done,sv.gw); }
@@ -1298,7 +1311,7 @@ function renderHome(){
       <div class="setlbl"><b style="color:var(--bad)">Clear all data</b><span>Wipes both profiles, local + cloud. For removing test data.</span></div>
       <div class="setbtns"><button id="clrBtn" class="mini danger">🗑 Clear</button></div>
     </div>
-    <div class="buildtag">build 0712.2333</div>
+    <div class="buildtag">build 0714.1508</div>
   </div></main>`;
   app.innerHTML=html;
   app.querySelectorAll('.progcard').forEach(c=>{
@@ -1346,6 +1359,8 @@ function renderLog(){
       <div><h2>${esc(meta.title)}</h2><div class="foc">${[meta.focus,S.entries.length+' exercises'].filter(Boolean).map(esc).join(' · ')}</div></div>
       <button class="donebtn ${S.done?'on':''}" id="donebtn">${S.done?'✓ Done':'Mark done'}</button>
     </div>
+    ${previewDay?(()=>{ const sv=getSaved(curDate); const nm=sv?(((dayList(pid,sv.week||week).find(d=>d.id===sv.dayId)||{}).name)||sv.dayId):'';
+      return `<div class="restinfo">👁 Just looking — "<b>${esc(nm)}</b>" logged on this date stays saved. Enter data here only if you want to replace it.</div>`; })():''}
     ${meta.restAfter?`<div class="restinfo">After this day: ${esc(meta.restAfter)} rest day${meta.restAfter==='1'?'':'s'}</div>`:''}
     ${S.done?(()=>{ const ds=dayList(pid,week); const i=ds.findIndex(d=>d.id===dayId);
       const nxt=i+1<ds.length?ds[i+1].name:('Week '+Math.min(PROGRAMS[pid].weeks,week+1)+' · '+dayList(pid,Math.min(PROGRAMS[pid].weeks,week+1))[0].name);
@@ -1386,10 +1401,12 @@ function renderLog(){
 function renderDays(){
   const P=PROGRAMS[pid];
   const box=$('#days'); box.innerHTML='';
+  const sv=previewDay?getSaved(curDate):null; // while previewing, keep the saved day's badge visible
   dayList(pid,week).forEach(d=>{
     const isCur=d.id===dayId;
-    const logged=isCur&&S.entries.some(e=>!e._auto&&(hasData(e.sets)||hasData(e.wsets)));
-    const done=isCur&&S.done;
+    const saved=sv&&sv.dayId===d.id;
+    const logged=(isCur&&S.entries.some(e=>!e._auto&&(hasData(e.sets)||hasData(e.wsets))))||(saved&&!sv.done&&(sv.entries||[]).length);
+    const done=(isCur&&S.done)||(saved&&sv.done);
     const el=document.createElement('button');
     el.className='day'+(isCur?' on':'')+(done?' done':(logged?' logged':''));
     el.innerHTML=`<div class="dl">Day ${d.id.slice(1)}</div><div class="dn">${esc(d.name)}</div>`;
@@ -1581,11 +1598,14 @@ function renderList(){
 }
 function changeDay(id){
   const sv=getSaved(curDate);
-  // don't silently wipe a logged/done session by switching the day on the same date
+  // a logged/done session on this date is never wiped by tapping another day —
+  // that day opens as a preview; only actually logging data there replaces the saved session
   if(sv&&sv.dayId!==id&&(sv.done||(sv.entries||[]).length)){
-    const nm=(dayList(pid,week).find(d=>d.id===sv.dayId)||{}).name||sv.dayId;
-    if(!confirm('This date already has "'+nm+'" logged.\nSwitch the day and discard that log?\n(To see the next workout, just change the date instead.)')) return;
+    previewDay=id; dayId=id;
+    S=buildSession(curDate,week,id,null,false,S.gw);
+    renderLog(); return;
   }
+  previewDay=null;
   dayId=id; store.set(K(pid,'pos','d'),id);
   const same=sv&&sv.dayId===id;
   S=buildSession(curDate,week,id,same?sv.entries:null,same?sv.done:false,S.gw); // warm-up done survives day switch
