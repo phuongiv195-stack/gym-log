@@ -763,7 +763,11 @@ function getStep(){
     if(v>0&&v<=20) return v; }catch(e){}
   return 2.5;
 }
-const round25=x=>{ const s=(activeP?getStep():2.5); return +(Math.round(x/s)*s).toFixed(2); };
+/* per-exercise weight step — machines jump 5kg, dumbbells 2.5… overrides the global step */
+const xstepKey=ex=>['g2',activeP.id,'xstep',ex].join(':');
+function exStep(ex){ const v=parseFloat(store.get(xstepKey(ex))); return (v>0&&v<=50)?v:null; }
+const stepOf=ex=>(ex!=null&&exStep(ex))||getStep();
+const round25=(x,ex)=>{ const s=(activeP?stepOf(ex):2.5); return +(Math.round(x/s)*s).toFixed(2); };
 
 /* ---- working weight: the kg you lift for your working sets (S1, S2…) ----
    The user enters it directly — warm-ups are percentages of it. Per profile, shared across programs. */
@@ -832,9 +836,9 @@ function workTarget(e){
   if(!rt) return m;
   const rir=effTargetRir(e)||0;
   const e1=m*(1+10/30);
-  let v=round25(e1/(1+(rt+rir)/30));
+  let v=round25(e1/(1+(rt+rir)/30), e.name);
   if(v>=m){                    // never suggest MORE than the typed Max;
-    v = rir>0 ? round25(m-getStep()) : m;   // and easy weeks must sit BELOW it
+    v = rir>0 ? round25(m-stepOf(e.name), e.name) : m;   // and easy weeks must sit BELOW it
     if(v<=0) v=m;
   }
   return v>0?v:m;
@@ -1056,7 +1060,7 @@ function progressionPlan(e, date, w, nSets){
       const repsArr=prevSets.map(t=>parseInt(t.reps));
       const maxedAll=repsArr.length>0&&repsArr.every(r=>!isNaN(r)&&r>=hi);
       if(maxedAll&&!easy)
-        return {kg:round25(prevKg+getStep()), reps:Array.from({length:nSets},()=>lo), mode:'up'};
+        return {kg:round25(prevKg+stepOf(e.name), e.name), reps:Array.from({length:nSets},()=>lo), mode:'up'};
       let bumped=easy;                                     // no push on deload/intro weeks
       const reps=Array.from({length:nSets},(_,i)=>{
         const valid=repsArr.filter(r=>!isNaN(r));
@@ -1090,7 +1094,7 @@ function refreshXsets(entry, e){
   const put=(s,val)=>{ if(s.a||str(s.kg)===''){ const v=String(val); if(s.kg!==v){ s.kg=v; changed=true; } s.a=1; } };
   if(/drop/i.test(t)&&!/mechanical/i.test(t)){          // drop sets: −25% chain from the last set
     let k=base;
-    entry.xsets.forEach(s=>{ k=round25(k*0.75); put(s,k); });
+    entry.xsets.forEach(s=>{ k=round25(k*0.75, e.name); put(s,k); });
   } else {                                              // partials / myo-reps / mechanical / holds: SAME weight
     entry.xsets.forEach(s=>put(s,base));
   }
@@ -1111,7 +1115,7 @@ function prefillEntry(entry, e, date, w){
   entry.sets.forEach((s,i)=>{ s.kg=String(plan.kg); s.reps=plan.reps[i]!=null?String(plan.reps[i]):''; s.a=1; }); // a = auto-suggested row
   const n=entry.wsets.length;
   entry.wsets.forEach((s,si)=>{ const p=(WU_PYRAMID[n]||[])[si];
-    if(p){ s.kg=String(round25(plan.kg*p[0]/100)); s.reps=bottomReps(p[1]); } });
+    if(p){ s.kg=String(round25(plan.kg*p[0]/100, e.name)); s.reps=bottomReps(p[1]); } });
   refreshXsets(entry, e);                                // pre-fill the ★ rows per technique
   entry._auto=true;
 }
@@ -1344,7 +1348,7 @@ function renderHome(){
       <div class="setlbl"><b style="color:var(--bad)">Clear all data</b><span>Wipes both profiles, local + cloud. For removing test data.</span></div>
       <div class="setbtns"><button id="clrBtn" class="mini danger">🗑 Clear</button></div>
     </div>
-    <div class="buildtag">build 0714.1943</div>
+    <div class="buildtag">build 0714.1949</div>
   </div></main>`;
   app.innerHTML=html;
   app.querySelectorAll('.progcard').forEach(c=>{
@@ -1551,7 +1555,7 @@ function renderList(){
     // ○ on each chip = "this is the one I'm doing" (main or a substitution); tap the chip itself for the video
     const pk=i=>`<span class="vpick ${entry.pick===i?'on':''}" data-vp="${i}" title="I'm doing this one">✓</span>`;
     let vids='';
-    if(e.video) vids+=`<a class="${entry.pick===0?'picked':''}" href="${esc(e.video)}" target="_blank" rel="noopener">${pk(0)}${play}Video</a>`;
+    if(e.video) vids+=`<a class="${entry.pick===0?'picked':''}" href="${esc(e.video)}" target="_blank" rel="noopener">${pk(0)}${play}${esc(e.name)}</a>`;
     const alts=[[1,e.sub1],[2,e.sub2]].filter(([i,s])=>s&&s.name&&!/^(see notes|n\/a)$/i.test(s.name.trim())); // placeholder subs live in the notes
     if(alts.length){
       vids+=`<span class="altlbl">or</span>`;
@@ -1569,7 +1573,8 @@ function renderList(){
           ${pickedSub?`<div class="maxline pickline">→ doing: <b>${esc(pickedSub.name)}</b></div>`:''}
           ${lastLine}
           ${prev?'':`<div class="maxline" title="The heaviest weight you have lifted on this exercise. Asked only until your first logged session.">Max <input class="maxin" inputmode="decimal" placeholder="?" value="${workVal!=null?workVal:''}"><span class="mu">kg</span></div>`}
-          <div class="maxline">Today <input class="maxin todayin" inputmode="decimal" placeholder="?" value="${(topKg(entry.sets)!=null?topKg(entry.sets):(plan&&plan.kg?plan.kg:''))}"><span class="mu">kg</span> × <b>${plan&&plan.reps[0]!=null?plan.reps[0]:(bottomReps(e.reps)||'—')}</b> reps${plan&&plan.mode==='up'?` <span class="estl up">↑ +${getStep()}kg</span>`:''}${plan&&plan.mode==='repeat'?` <span class="estl">deload — repeat</span>`:''}</div>
+          <div class="maxline">Today <input class="maxin todayin" inputmode="decimal" placeholder="?" value="${(topKg(entry.sets)!=null?topKg(entry.sets):(plan&&plan.kg?plan.kg:''))}"><span class="mu">kg</span> × <b>${plan&&plan.reps[0]!=null?plan.reps[0]:(bottomReps(e.reps)||'—')}</b> reps${plan&&plan.mode==='up'?` <span class="estl up">↑ +${stepOf(e.name)}kg</span>`:''}${plan&&plan.mode==='repeat'?` <span class="estl">deload — repeat</span>`:''}</div>
+          <div class="maxline">Step <input class="maxin stepin" inputmode="decimal" placeholder="${getStep()}" value="${exStep(e.name)!=null?exStep(e.name):''}" title="Weight jump for THIS exercise — machine stack 5, dumbbells 2.5… Warm-ups & progression round to it. Empty = the global step."><span class="mu">kg</span>${exStep(e.name)?'':` <span class="estl">global ${getStep()}kg</span>`}</div>
         </div>
         <button class="exdonebtn ${entry.done?'on':''}" title="Mark exercise done">✓</button>
       </div>
@@ -1643,11 +1648,31 @@ function renderList(){
         entry.sets.forEach(s=>{ s.kg=String(nv); });
         const n=entry.wsets.length;
         entry.wsets.forEach((s,si)=>{ const p=(WU_PYRAMID[n]||[])[si];
-          if(p) s.kg=String(round25(nv*p[0]/100)); });
+          if(p) s.kg=String(round25(nv*p[0]/100, e.name)); });
         entry.xsets.forEach(s=>{ s.a=1; });
         refreshXsets(entry, e);
         const plan2=progressionPlan(e,curDate,week,entry.sets.length);
         entry.sets.forEach((s,i)=>{ if(str(s.reps)===''&&plan2&&plan2.reps[i]!=null) s.reps=String(plan2.reps[i]); });
+      }
+      commit(); renderList(); renderDays();
+    };
+    // Step box: this exercise's weight jump (machine 5 / dumbbell 2.5…) — re-round the warm-ups now
+    const sp=card.querySelector('.stepin');
+    if(sp) sp.onchange=()=>{
+      const v=parseFloat(sp.value);
+      if(!sp.value.trim()||isNaN(v)||v<=0||v>50) store.remove(xstepKey(e.name));
+      else store.set(xstepKey(e.name), String(v));
+      if(entry._auto){ // untouched suggestions -> re-derive the whole prefill with the new step
+        delete entry._plan;
+        entry.sets.forEach(s=>{ s.kg=''; s.reps=''; });
+        entry.wsets.forEach(s=>{ s.kg=''; s.reps=''; });
+        entry.xsets.forEach(s=>{ s.kg=''; s.a=1; });
+        prefillEntry(entry, e, curDate, week);
+      } else {
+        const bv=topKg(entry.sets); // keep your working numbers, just re-round the warm-up pyramid
+        if(bv){ const n=entry.wsets.length;
+          entry.wsets.forEach((s,si)=>{ const p=(WU_PYRAMID[n]||[])[si];
+            if(p) s.kg=String(round25(bv*p[0]/100, e.name)); }); }
       }
       commit(); renderList(); renderDays();
     };
@@ -1660,7 +1685,7 @@ function renderList(){
       entry.sets.forEach(s=>{ s.kg=String(v); });          // today's working weight
       const n=entry.wsets.length;
       entry.wsets.forEach((s,si)=>{ const p=(WU_PYRAMID[n]||[])[si];
-        if(p) s.kg=String(round25(v*p[0]/100)); });        // warm-ups re-derived
+        if(p) s.kg=String(round25(v*p[0]/100, e.name)); });        // warm-ups re-derived
       entry.xsets.forEach(s=>{ s.a=1; });                  // let the ★ mirror recompute
       refreshXsets(entry, e);
       commit(); renderList(); renderDays();
