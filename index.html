@@ -131,11 +131,16 @@ main{background:var(--paper); color:var(--ink); border-radius:20px 20px 0 0; pad
 .day .dn{font-family:var(--disp); font-size:15.5px; font-weight:600; letter-spacing:.3px; margin-top:1px}
 .day.on{background:var(--olive); border-color:var(--olive); color:#fff}
 .day.on .dl{color:#dfe6c6}
+/* every DONE day of the week is filled green, whichever chip is open */
+.day.done{background:var(--olive); border-color:var(--olive); color:#fff}
+.day.done .dl{color:#dfe6c6}
+/* the chip you're viewing gets a gold ring so it stands out even among green ones */
+.day.on{box-shadow:0 0 0 2.5px var(--gold)}
 .day.logged::after{content:'•'; float:right; color:var(--gold); font-weight:700; font-size:16px; margin-left:6px; line-height:.8}
-.day.done::after{content:'✓'; float:right; color:var(--good); font-weight:700; font-size:13px; margin-left:6px}
-.day.on.done::after,.day.on.logged::after{color:#dfe6c6}
+.day.done::after{content:'✓'; float:right; color:#dfe6c6; font-weight:700; font-size:13px; margin-left:6px}
+.day.on.logged::after{color:#dfe6c6}
 .day .dt{font-family:var(--mono); font-size:9.5px; font-weight:700; color:var(--mut2); margin-top:2px}
-.day.on .dt{color:#dfe6c6}
+.day.on .dt,.day.done .dt{color:#dfe6c6}
 
 .sheet-h{display:flex; align-items:center; justify-content:space-between; gap:8px; margin:6px 4px 12px}
 .sheet-h>div:first-child{flex:1}
@@ -1339,7 +1344,7 @@ function renderHome(){
       <div class="setlbl"><b style="color:var(--bad)">Clear all data</b><span>Wipes both profiles, local + cloud. For removing test data.</span></div>
       <div class="setbtns"><button id="clrBtn" class="mini danger">🗑 Clear</button></div>
     </div>
-    <div class="buildtag">build 0714.1931</div>
+    <div class="buildtag">build 0714.1935</div>
   </div></main>`;
   app.innerHTML=html;
   app.querySelectorAll('.progcard').forEach(c=>{
